@@ -105,6 +105,11 @@
 
   /* Palier */
   .tierbar { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .goalbar { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; font-size: 13px; padding: 8px 12px; }
+  .goalbar > div { min-width: 0; }
+  .ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .ach .card { padding: 8px; font-size: 12px; }
+  .ach .off { opacity: .35; filter: grayscale(1); }
   .tier-badge { display: flex; align-items: center; gap: 8px; font-weight: 700; }
   .tier-badge .ic { font-size: 26px; }
   .tier-badge .lvl { background: var(--accent); color: #111; border-radius: 6px; padding: 2px 7px; font-size: 12px; }
@@ -246,6 +251,7 @@
     </div>
     <div class="controls">
       <button id="btnNext" class="btn primary" title="Barre d'espace">▶ Semaine suivante</button>
+      <button id="btnSkip" class="btn" title="Avancer jusqu'au prochain fait marquant (événement, régime, rapport, opportunité…)">⏭️ Jusqu'au prochain fait</button>
       <button id="btnAuto" class="btn" title="Avance automatique">⏩ Auto : OFF</button>
       <button id="btnSave" class="btn" title="Sauvegarder">💾</button>
       <button id="btnLoad" class="btn" title="Charger la sauvegarde">📂</button>
@@ -254,6 +260,7 @@
   </header>
 
   <section id="tierBar" class="panel tierbar"></section>
+  <section id="goalBar" class="panel goalbar"></section>
   <section id="stats" class="stats"></section>
 
   <section class="panel chartpanel">
@@ -613,16 +620,26 @@ function createState(difficulty, fundName, legacy) {
       navps: CONFIG.START_NAVPS, hwm: CONFIG.START_NAVPS, peakNavps: CONFIG.START_NAVPS,
       leverage: 1, autoRebalance: difficulty === 'casual', preset: 'equilibre',
       ddAlert: 0.15, ddAlerted: false, carry: 0, navHist: [CONFIG.START_NAVPS],
-      lastPerfFeeWeek: 0
+      lastPerfFeeWeek: 0,
+      specials: []   // positions d'opportunités ponctuelles (valorisées au coût)
     },
     team: { employees: [], candidates: [], nextId: 1, nextRefresh: 0 },
     investors: { list: [], nextId: 1, everAbove: false },
     upgrades: {},
-    events: { nextWeek: 4, pending: null, last: {}, flags: {} },
+    events: { nextWeek: 4, pending: null, last: {}, flags: {}, queue: [] },
+    strategy: null,                         // stratégie choisie au lancement du fonds
+    bench: { value: 100, bal: 100, hist: [100] }, // indice 60/40 et portefeuille « Équilibré » de comparaison
+    regimeStat: null,                       // suivi du régime en cours (bilan de fin de régime)
+    quarter: null, goal: null, goalStreak: 0, goalsDone: 0, quarterN: 0, lastReport: null, showReports: true,
+    opps: [], nextOppWeek: 0,               // opportunités ponctuelles
+    achievements: {},
+    advice: [],                             // conseils de l'équipe
+    satellites: [], nextSatId: 1,           // fonds satellites (palier 7+)
+    feeShare: 1,                            // part des frais revenant à la société (cession de capital)
     counters: { cashNegWeeks: 0, bankruptWeeks: 0, lowComplianceWeeks: 0, marginCalls: 0 },
     last: { cash: 0, aum: 0, subs: 0, reds: 0, mgmt: 0, perf: 0, salaries: 0, txFees: 0, fundReturn: 0, rpGain: 0, fines: 0 },
     stats: { peakAUM: 0, totalFees: 0, crises: 0, startWeek: 0 },
-    history: { week: [], navps: [], aum: [] },
+    history: { week: [], navps: [], aum: [], bench: [] },
     journal: [],
     status: 'playing',  // playing | lost | retired
     won: false,
@@ -742,6 +759,12 @@ const Market = {
       m.hist[k].push(m.prices[k]);
       if (m.hist[k].length > 52) m.hist[k].shift();
     });
+    if (!silent) {
+      if (prev) Game.regimeReport(prev);
+      const r = m.lastReturns;
+      S.bench.value *= 1 + 0.6 * r.equities + 0.4 * r.bonds;   // indice de référence 60/40
+      S.bench.bal *= 1 + 0.5 * r.equities + 0.35 * r.bonds;    // préréglage Équilibré (15 % cash)
+    }
     // Décrément des modificateurs temporaires (événements)
     m.mods.forEach(md => md.weeks--);
     m.mods = m.mods.filter(md => md.weeks > 0);
@@ -784,6 +807,7 @@ const Market = {
 
   isUnlocked(k) {
     if (k === 'cash') return true;
+    if (k === 'crypto' && Strat.b('cryptoEarly') && S.prop.launched) return true;
     return S.tier >= CONFIG.ASSETS[k].tier;
   },
 
@@ -795,11 +819,14 @@ const Market = {
    5. PORTFOLIO — positions, allocation cible, frais, stop-loss, levier
    ============================================================================= */
 const Portfolio = {
-  aum() { let v = S.fund.cash; for (const k of RISKY) v += S.fund.positions[k]; return v; },
+  /* Valeur liquide (cash + positions) ; l'AUM ajoute les opportunités en cours */
+  liquid() { let v = S.fund.cash; for (const k of RISKY) v += S.fund.positions[k]; return v; },
+  specialsValue() { return (S.fund.specials || []).reduce((a, x) => a + x.amount, 0); },
+  aum() { return this.liquid() + this.specialsValue(); },
   totalShares() { let s = 0; for (const inv of S.investors.list) s += inv.shares; return s; },
-  gross() { const A = this.aum(); if (A <= 0) return 0; let g = 0; for (const k of RISKY) g += Math.abs(S.fund.positions[k]); return g / A; },
+  gross() { const A = this.liquid(); if (A <= 0) return 0; let g = 0; for (const k of RISKY) g += Math.abs(S.fund.positions[k]); return g / A; },
   weights() {
-    const A = this.aum(); const w = {};
+    const A = this.liquid(); const w = {};
     for (const k of RISKY) w[k] = A > 0 ? S.fund.positions[k] / A : S.fund.target[k] / 100;
     w.cash = A > 0 ? S.fund.cash / A : this.targetCash() / 100;
     return w;
@@ -833,19 +860,19 @@ const Portfolio = {
 
   feeReduction() {
     const e = Team.effects();
-    return clamp(e.fee + Progression.upg('software') * 0.15 + Progression.tierBonus('trading'), 0, 0.75);
+    return clamp(e.fee + Progression.upg('software') * 0.15 + Progression.tierBonus('trading') + Strat.b('fee'), 0, 0.8);
   },
   feeRate(k) { return CONFIG.ASSETS[k].fee * (1 - this.feeReduction()); },
 
   /* Coût estimé d'un rééquilibrage vers la cible */
   estimateRebalance() {
-    const A = this.aum(); if (A <= 0) return 0;
+    const A = this.liquid(); if (A <= 0) return 0;
     let fee = 0;
     for (const k of RISKY) fee += Math.abs(S.fund.target[k] / 100 * A - S.fund.positions[k]) * this.feeRate(k);
     return fee;
   },
   drift() {
-    const A = this.aum(); if (A <= 0) return 0;
+    const A = this.liquid(); if (A <= 0) return 0;
     let d = 0;
     for (const k of RISKY) d = Math.max(d, Math.abs(S.fund.positions[k] / A * 100 - S.fund.target[k]));
     return d;
@@ -854,7 +881,7 @@ const Portfolio = {
   /* Exécute le rééquilibrage vers l'allocation cible (frais selon liquidité) */
   rebalance(manual = false) {
     this.normalizeTarget();
-    const f = S.fund, A = this.aum();
+    const f = S.fund, A = this.liquid();
     if (A <= 0) return 0;
     let fee = 0, invested = 0;
     for (const k of RISKY) {
@@ -881,7 +908,7 @@ const Portfolio = {
   },
   deposit(amount) {
     if (amount <= 0) return;
-    const A = this.aum();
+    const A = this.liquid();
     if (A < 1e-6) {
       for (const k of RISKY) S.fund.positions[k] = 0;
       S.fund.cash = amount;
@@ -889,7 +916,7 @@ const Portfolio = {
     } else this.scale((A + amount) / A);
   },
   withdraw(amount) {
-    const A = this.aum();
+    const A = this.liquid();
     if (A <= 0 || amount <= 0) return 0;
     amount = Math.min(amount, A);
     this.scale((A - amount) / A);
@@ -899,7 +926,8 @@ const Portfolio = {
   /* Étape 2 du tick : applique les rendements du marché au portefeuille */
   applyReturns() {
     const f = S.fund, m = S.market;
-    const A0 = this.aum();
+    const A0 = this.liquid();
+    S.last.pnl = {};
     const highRisk = S.risk > CONFIG.RISK_ALERT;
     let modelRet = 0, shortVal = 0;
     for (const k of RISKY) {
@@ -909,6 +937,7 @@ const Portfolio = {
       const a = this.alpha(k) / 52;
       const pos = f.positions[k];
       f.positions[k] = pos + pos * r + Math.abs(pos) * a;
+      S.last.pnl[k] = pos * r + Math.abs(pos) * a;
       if (pos < 0) shortVal += -pos;
       modelRet += f.target[k] / 100 * (r + a);
     }
@@ -919,7 +948,7 @@ const Portfolio = {
     const tc = this.targetCash();
     if (tc < 0) modelRet -= -tc / 100 * CONFIG.BORROW_RATE / 52;
 
-    const A1 = this.aum();
+    const A1 = this.liquid();
     if (A0 > 0 && A1 <= 0) { S.last.propReturn = modelRet; this.liquidate(); return; }
     if (this.totalShares() > 1e-12) this.syncNavps();
     else f.navps *= 1 + modelRet;
@@ -934,6 +963,9 @@ const Portfolio = {
     if (CONFIG.ASSETS[k].alphaInfo) a += Team.infoQuality() * 0.025;
     a += e.quantAlpha + (e.spec[k] || 0);
     if (Progression.upg('autostrat') > 0) a += 0.01;
+    if (k === 'equities' || k === 'emerging') a += Strat.b('alphaEq');
+    if (k === 'crypto') a += Strat.b('alphaCrypto');
+    a += Strat.b('alphaAll');
     return a;
   },
 
@@ -942,6 +974,7 @@ const Portfolio = {
     const f = S.fund;
     for (const k of RISKY) f.positions[k] = 0;
     f.cash = 0;
+    f.specials = [];
     S.investors.list = [];
     f.navps = CONFIG.START_NAVPS; f.hwm = f.navps; f.peakNavps = f.navps;
     S.reputation = Math.max(0, S.reputation - 30);
@@ -1070,7 +1103,8 @@ const Team = {
   capacity() { return TIERS[S.tier - 1].cap; },
   roleUnlocked(r) { return S.tier >= ROLES[r].tier; },
   hasRole(r) { return S.team.employees.some(e => e.role === r); },
-  power(e) { return e.level * CONFIG.RANK_POWER[e.rank]; },
+  /* Puissance effective : un moral < 50 réduit l'efficacité */
+  power(e) { const m = e.morale ?? 70; return e.level * CONFIG.RANK_POWER[e.rank] * (m < 50 ? 0.5 + m / 100 : 1); },
   title(e) { return ROLES[e.role].titles[e.rank]; },
   salary(e) {
     let s = ROLES[e.role].salary * (1 + 0.12 * (e.level - 1)) * CONFIG.RANK_SALARY[e.rank] * this.wageIndex() * (e.salaryMult || 1);
@@ -1128,11 +1162,11 @@ const Team = {
   },
   infoQuality() {
     const e = this.effects();
-    return 1 - Math.exp(-(e.info + Progression.upg('data') * 3) / 12);
+    return Math.min(0.98, 1 - Math.exp(-(e.info + Progression.upg('data') * 3) / 12) + Strat.b('info'));
   },
   rpPerWeek() {
     const e = this.effects();
-    return (1 + e.rp) * (1 + Progression.upg('training') * 0.1) * (1 + Progression.tierBonus('rp'));
+    return (1 + e.rp) * (1 + Progression.upg('training') * 0.1) * (1 + Progression.tierBonus('rp')) * (1 + Strat.b('rp'));
   },
 
   /* Candidats */
@@ -1173,7 +1207,8 @@ const Team = {
     const cost = this.signingCost(c);
     if (S.cash < cost) return UI.toast('Cash insuffisant pour la prime de signature.', 'bad');
     S.cash -= cost;
-    c.hiredWeek = S.week;
+    c.hiredWeek = S.week; c.morale = 70; c.lastBoost = S.week;
+    S.events.flags.everHired = true;
     S.team.employees.push(c);
     S.team.candidates = S.team.candidates.filter(x => x.id !== id);
     this.invalidate();
@@ -1201,6 +1236,7 @@ const Team = {
     if (S.rp < c.rp || S.cash < c.cash) return UI.toast('Ressources insuffisantes (recherche ou cash).', 'bad');
     S.rp -= c.rp; S.cash -= c.cash;
     e.level++;
+    e.morale = Math.min(100, (e.morale ?? 70) + 8); e.lastBoost = S.week;
     this.invalidate();
     Game.log(`Formation : ${e.name} passe niveau ${e.level}.`, 'good');
     UI.renderAll();
@@ -1225,9 +1261,86 @@ const Team = {
     if (S.cash < c) return UI.toast('Cash insuffisant pour la promotion.', 'bad');
     S.cash -= c;
     e.rank++;
+    e.morale = Math.min(100, (e.morale ?? 70) + 20); e.lastBoost = S.week;
     this.invalidate();
     Game.log(`Promotion : ${e.name} devient ${this.title(e)}.`, 'good');
     UI.toast(`🎉 ${e.name} devient ${this.title(e)}`, 'good');
+    UI.renderAll();
+  },
+
+  /* Prime exceptionnelle : remonte le moral */
+  bonusCost(e) { return this.salary(e) * 2; },
+  bonus(id) {
+    const e = S.team.employees.find(x => x.id === id);
+    if (!e) return;
+    const c = this.bonusCost(e);
+    if (S.cash < c) return UI.toast('Cash insuffisant pour la prime.', 'bad');
+    S.cash -= c;
+    e.morale = Math.min(100, (e.morale ?? 70) + 15); e.lastBoost = S.week;
+    this.invalidate();
+    Game.log(`Prime versée à ${e.name} (${fmtMoney(c)}) : moral ${Math.round(e.morale)}.`, 'good');
+    UI.renderAll();
+  },
+
+  /* Moral hebdomadaire : salaire, promotions récentes, performance, trésorerie */
+  updateMorale() {
+    const perf = clamp(Investors.perfAnnual(26) * 30, -10, 10);
+    for (const e of S.team.employees.slice()) {
+      const loyal = e.traits.includes('loyal');
+      const stale = clamp((S.week - (e.lastBoost ?? e.hiredWeek ?? 0)) / 52 * 15, 0, 25);
+      const target = 65 + ((e.salaryMult || 1) - 1) * 40 + e.rank * 5 - stale + perf - (S.cash < 0 ? 20 : 0) + (loyal ? 10 : 0);
+      e.morale = clamp((e.morale ?? 70) + (target - (e.morale ?? 70)) * 0.08, 0, 100);
+      if (e.morale < 30 && rng() < (loyal ? 0.01 : 0.04)) {
+        Game.log(`😞 ${e.name} (${this.title(e)}) démissionne : moral au plus bas.`, 'bad');
+        UI.toast(`😞 ${e.name} démissionne`, 'bad');
+        this.fire(e.id, true);
+      }
+    }
+    this.invalidate();
+  },
+
+  /* L'équipe prend la parole : alertes et recommandations actionnables */
+  advise() {
+    S.advice = S.advice.filter(a => S.week - a.week < 4);
+    const add = (key, text, act) => {
+      if (S.advice.some(a => a.key === key)) return;
+      S.advice.unshift({ id: S.week * 100 + S.advice.length, key, week: S.week, text, act });
+      if (S.advice.length > 4) S.advice.length = 4;
+      Game.log('🗣️ ' + text, 'info');
+      UI.toast('🗣️ ' + text, 'info');
+    };
+    const emps = S.team.employees, m = S.market;
+    // Risk analyst confirmé : détecte immédiatement un marché baissier ou une crise
+    const risk = emps.filter(e => e.role === 'risk' && e.level >= 3).sort((a, b) => b.level - a.level)[0];
+    if (risk && (m.regime === 'bear' || m.regime === 'crisis') && m.perceived !== m.regime) {
+      m.perceived = m.regime; m.perceivedSince = S.week;
+      add('risk-' + m.regime, `${risk.name} (risque) : nos indicateurs signalent un marché ${CONFIG.REGIMES[m.regime].name.toLowerCase()}. Je recommande de passer en Prudent.`, 'preset:prudent');
+    }
+    if (rng() > 0.3) return;
+    const trader = emps.find(e => e.role === 'trader' && e.traits.includes('impulsif'));
+    const analyst = emps.filter(e => e.role === 'analyst' || e.role === 'quant').sort((a, b) => Team.power(b) - Team.power(a))[0];
+    const comp = emps.find(e => e.role === 'compliance');
+    const sales = emps.find(e => e.role === 'sales');
+    const sad = emps.filter(e => (e.morale ?? 70) < 40).sort((a, b) => a.morale - b.morale)[0];
+    const opts = [];
+    if (trader && S.fund.preset !== 'dynamique') opts.push(() => add('trader-dyn', `${trader.name} (trader) : « On est trop timides ! » Il propose de passer en Dynamique.`, 'preset:dynamique'));
+    if (analyst) {
+      const best = RISKY.filter(k => Market.isUnlocked(k)).sort((a, b) => (m.forecasts[b] || 0) - (m.forecasts[a] || 0))[0];
+      if (best && (m.forecasts[best] || 0) > 0.12) opts.push(() => add('an-' + best, `${analyst.name} recommande de renforcer ${CONFIG.ASSETS[best].name} (prévision ${fmtPct(m.forecasts[best], 0, true)}/an).`, 'shift:' + best));
+    }
+    if (comp && S.compliance < 55) opts.push(() => add('comp', `${comp.name} (conformité) : nos contrôles se dégradent (${Math.round(S.compliance)}/100). Un Bureau d'audit aiderait.`, null));
+    if (sales && Investors.globalConfidence() < 45) opts.push(() => add('sales', `${sales.name} (ventes) : les clients s'inquiètent. Une bonne performance ce trimestre est vitale.`, null));
+    if (sad) opts.push(() => add('sad-' + sad.id, `${sad.name} semble démotivé(e) (moral ${Math.round(sad.morale)}/100). Une prime ou une promotion aiderait.`, 'bonus:' + sad.id));
+    if (opts.length) pick(opts)();
+  },
+  applyAdvice(id) {
+    const a = S.advice.find(x => x.id === id);
+    if (!a || !a.act) return;
+    const [type, arg] = a.act.split(':');
+    if (type === 'preset') { Portfolio.applyPreset(arg); Portfolio.rebalance(true); }
+    else if (type === 'shift') Portfolio.shiftInto(arg, 0.05);
+    else if (type === 'bonus') Team.bonus(Number(arg));
+    S.advice = S.advice.filter(x => x !== a);
     UI.renderAll();
   },
 
@@ -1262,7 +1375,7 @@ const INV_NAMES = {
 };
 
 const Investors = {
-  typeUnlocked(t) { return S.tier >= INVESTOR_TYPES[t].tier; },
+  typeUnlocked(t) { return S.tier >= INVESTOR_TYPES[t].tier || (t === 'institutional' && S.events.flags.earlyInst && S.tier >= 4); },
   capital(inv) { return inv.shares * S.fund.navps; },
   clients() { return S.investors.list.filter(i => i.type !== 'founder'); },
   founder() { return S.investors.list.find(i => i.type === 'founder'); },
@@ -1304,8 +1417,9 @@ const Investors = {
   /* Saturation : plus le fonds est gros, plus il est difficile de croître en % */
   saturation(A) { return Math.pow(1e6 / Math.max(A, 1e6), 0.15); },
   typeBonus(t) {
-    if (t === 'retail') return 1 + Progression.tierBonus('retail');
-    if (t === 'institutional' || t === 'pension' || t === 'sovereign') return 1 + Progression.tierBonus('institutional');
+    if (t === 'retail') return 1 + Progression.tierBonus('retail') + Strat.b('retail');
+    if (t === 'hnwi' || t === 'uhnwi') return 1 + Strat.b('hnwi');
+    if (t === 'institutional' || t === 'pension' || t === 'sovereign') return 1 + Progression.tierBonus('institutional') + Strat.b('inst');
     return 1;
   },
 
@@ -1361,9 +1475,9 @@ const Investors = {
     if (A > 0) {
       const mg = A * CONFIG.MGMT_FEE / 52;
       Portfolio.withdraw(mg);
-      S.cash += mg;
-      S.last.mgmt = mg;
-      S.stats.totalFees += mg;
+      S.cash += mg * S.feeShare;
+      S.last.mgmt = mg * S.feeShare;
+      S.stats.totalFees += mg * S.feeShare;
       Portfolio.syncNavps();
     }
     if (S.week - f.lastPerfFeeWeek >= CONFIG.PERF_FEE_PERIOD) {
@@ -1374,7 +1488,7 @@ const Investors = {
         const fee = (f.navps - f.hwm) * sh * rate;
         Portfolio.withdraw(fee);
         Portfolio.syncNavps();
-        const carry = fee * f.carry;
+        const carry = fee * f.carry + fee * (1 - f.carry) * (1 - S.feeShare);
         S.cash += fee - carry;
         S.last.perf = fee - carry;
         S.stats.totalFees += fee - carry;
@@ -1575,6 +1689,7 @@ const Prop = {
     Portfolio.deposit(seed);
     Portfolio.syncNavps();
     S.fund.hwm = S.fund.navps; S.fund.peakNavps = S.fund.navps;
+    S.events.queue = (S.events.queue || []).concat(['fund_strategy']);
     Game.log(`🚀 Lancement de « ${S.fundName} » : track record ${fmtPct(ann, 1, true)}/an, ${fmtMoney(seed)} de premiers clients.`, 'tier');
     UI.toast(`🚀 ${S.fundName} est lancé !`, 'tier');
   }
@@ -1598,7 +1713,7 @@ const Risk = {
   portfolioVol(useTarget) {
     const w = useTarget ? Object.fromEntries(RISKY.map(k => [k, S.fund.target[k] / 100])) : Portfolio.weights();
     const C = Market.corrMatrix(S.market.regime);
-    const red = Team.effects().volRed;
+    const red = Math.min(0.45, Team.effects().volRed + Strat.b('volRed'));
     const sig = RISKY.map(k => Market.effVol(k) * (1 - red));
     let v = 0;
     for (let i = 0; i < RISKY.length; i++)
@@ -1622,12 +1737,12 @@ const Risk = {
     let c = CONFIG.COMPLIANCE_BASE - (S.tier - 1) * mode.complexityPerTier;
     c -= Math.max(0, Portfolio.gross() - 1) * 6;
     if (RISKY.some(k => S.fund.positions[k] < 0)) c -= 3;
-    c += Team.effects().compliance + Progression.upg('audit') * 6 + Progression.tierBonus('compliance') * 25;
+    c += Team.effects().compliance + Progression.upg('audit') * 6 + Progression.tierBonus('compliance') * 25 + Strat.b('compliance');
     if (S.events.flags.cyberPlan) c += 2;
     return clamp(c, 0, 100);
   },
   reputationTarget() {
-    const A = Math.max(Portfolio.aum(), 1000);
+    const A = Math.max(Game.totalAUM(), 1000);
     const perf = Investors.perfAnnual(52);
     let t = 15 + 7 * Math.log10(A / 1000);
     t += clamp((perf - 0.05) * 80, -15, 20);
@@ -1665,7 +1780,7 @@ const Risk = {
 
     // Réputation
     const rt = this.reputationTarget();
-    if (rt > S.reputation) S.reputation += (rt - S.reputation) * CONFIG.REP_UP_SPEED * (1 + Progression.tierBonus('repGain'));
+    if (rt > S.reputation) S.reputation += (rt - S.reputation) * CONFIG.REP_UP_SPEED * (1 + Progression.tierBonus('repGain') + Strat.b('repGain'));
     else S.reputation -= (S.reputation - rt) * CONFIG.REP_DOWN_SPEED;
     S.reputation = clamp(S.reputation, 0, 100);
 
@@ -1696,6 +1811,16 @@ const Risk = {
    sérialisables (pour qu'un événement en attente survive à une sauvegarde).
    Chaque option a un coût : pas de choix dominant.
    ============================================================================= */
+/* --- Stratégies de fonds (choisies au lancement) --- */
+const STRATEGIES = {
+  longonly: { name: 'Long-only actions', icon: '📈', desc: 'Alpha +1 %/an sur actions et émergents. Particuliers et HNWI +20 %.', b: { alphaEq: 0.01, retail: 0.2, hnwi: 0.2 } },
+  macro:    { name: 'Global macro', icon: '🌐', desc: "Qualité d'information +15 pts, volatilité −5 %. HNWI/UHNWI +30 %.", b: { info: 0.15, volRed: 0.05, hnwi: 0.3 } },
+  quant:    { name: 'Quantitatif', icon: '🧮', desc: 'Frais −30 %, recherche +30 %, alpha +0,5 %/an partout. Institutionnels +25 %.', b: { fee: 0.3, rp: 0.3, alphaAll: 0.005, inst: 0.25 } },
+  crypto:   { name: 'Actifs numériques', icon: '🪙', desc: 'Crypto débloquée dès le lancement, alpha crypto +4 %/an, particuliers +40 %. Conformité −8.', b: { cryptoEarly: 1, alphaCrypto: 0.04, retail: 0.4, compliance: -8 } },
+  activist: { name: 'Activiste / situations spéciales', icon: '🦈', desc: 'Opportunités 50 % plus fréquentes et plus sûres, réputation +20 % plus rapide. Conformité −4.', b: { oppFreq: 0.5, oppP: 0.08, repGain: 0.2, compliance: -4 } }
+};
+const Strat = { b(key) { const st = S && S.strategy && STRATEGIES[S.strategy]; return st ? (st.b[key] || 0) : 0; } };
+
 const EVENTS = [
   {
     id: 'flash_crash', icon: '⚡', title: 'Krach éclair',
@@ -1790,7 +1915,7 @@ const EVENTS = [
     },
     text: p => `Un fonds concurrent propose le double de son salaire à ${p.name} (${p.title}).`,
     options: [
-      { label: 'Contre-offre', hint: p => `Salaire +40 % définitif · 💰 −${fmtMoney(p.bonus)} de prime`, apply(p) { const e = S.team.employees.find(x => x.id === p.id); if (e) { e.salaryMult = (e.salaryMult || 1) * 1.4; payCash(p.bonus); } } },
+      { label: 'Contre-offre', hint: p => `Salaire +40 % définitif · 💰 −${fmtMoney(p.bonus)} de prime`, apply(p) { const e = S.team.employees.find(x => x.id === p.id); if (e) { e.salaryMult = (e.salaryMult || 1) * 1.4; payCash(p.bonus); e.morale = Math.min(100, (e.morale ?? 70) + 15); e.lastBoost = S.week; } } },
       { label: 'Laisser partir', hint: () => 'Perte de l’employé · ⭐ −2', apply(p) { Team.fire(p.id, true); addRep(-2); } },
       { label: 'Offrir du carried interest', hint: () => '5 % des futures commissions de performance reversées · devient loyal', apply(p) { const e = S.team.employees.find(x => x.id === p.id); if (e) { e.traits.push('loyal'); S.fund.carry = Math.min(0.3, S.fund.carry + 0.05); } } }
     ]
@@ -1992,6 +2117,65 @@ const EVENTS = [
       { label: 'Suivre strictement les prévisions', hint: () => 'Passe en allocation « Selon les prévisions » · 🔬 −2', apply() { S.rp = Math.max(0, S.rp - 2); Portfolio.applyPreset('prevision'); } }
     ]
   },
+  /* ---------- Événements déclenchés par le jeu (jamais tirés au hasard) ---------- */
+  {
+    id: 'fund_strategy', icon: '🧭', title: 'Quelle stratégie pour votre fonds ?',
+    cond: () => false, cooldown: 0, weight: () => 0,
+    prepare() { return {}; },
+    text: () => `Vos premiers clients veulent savoir comment vous allez gérer leur argent. Ce choix est définitif : il modifie vos bonus, les clients attirés et les opportunités.`,
+    options: Object.entries(STRATEGIES).map(([id, st]) => ({ label: `${st.icon} ${st.name}`, hint: () => st.desc,
+      apply() { S.strategy = id; Team.invalidate(); Game.log(`🧭 Stratégie du fonds : ${st.icon} ${st.name}.`, 'tier'); } }))
+  },
+  {
+    id: 'm_press', icon: '📰', title: 'Jalon : portrait dans la presse financière',
+    cond: () => false, cooldown: 0, weight: () => 0, prepare() { return {}; },
+    text: () => `Votre fonds dépasse 500 k$ : un grand magazine financier veut vous consacrer un portrait. Quel angle choisir ?`,
+    options: [
+      { label: 'Mettre en avant vos performances', hint: () => '🤝 +5 · ⭐ +3 · 30 % de risque de citation déformée (⭐ −3)', apply() { confAll(5); addRep(rng() < 0.3 ? -3 : 3); } },
+      { label: "Mettre en avant l'équipe", hint: () => 'Moral de toute l’équipe +15 · ⭐ +2', apply() { S.team.employees.forEach(e => { e.morale = Math.min(100, (e.morale ?? 70) + 15); }); addRep(2); } },
+      { label: 'Parler de votre gestion des risques', hint: () => '🛡️ +5 · ⭐ +2', apply() { addCompliance(5); addRep(2); } }
+    ]
+  },
+  {
+    id: 'm_dd', icon: '🗂️', title: 'Jalon : première due diligence institutionnelle',
+    cond: () => false, cooldown: 0, weight: () => 0, prepare() { return { c1: 10 * U(), c2: 20 * U() }; },
+    text: () => `Un assureur envisage d'investir et demande à auditer vos process. Réussir ouvre les portes des institutionnels dès le palier 4.`,
+    options: [
+      { label: 'Ouvrir vos livres en interne', hint: p => `💰 −${fmtMoney(p.c1)} · 🛡️ +8 · 60 % : institutionnels débloqués en avance`, apply(p) { payCash(p.c1); addCompliance(8); if (rng() < 0.6) { S.events.flags.earlyInst = true; Game.log('Due diligence réussie : les institutionnels vous suivent.', 'good'); } else Game.log('Due diligence ratée de peu : réessayez plus tard.', 'warn'); } },
+      { label: 'Engager un cabinet spécialisé', hint: p => `💰 −${fmtMoney(p.c2)} · 🛡️ +12 · institutionnels débloqués en avance`, apply(p) { payCash(p.c2); addCompliance(12); S.events.flags.earlyInst = true; } },
+      { label: 'Décliner, trop tôt', hint: () => '⭐ −2', apply() { addRep(-2); } }
+    ]
+  },
+  {
+    id: 'm_equity', icon: '🏦', title: 'Jalon : entrée au capital de votre société',
+    cond: () => false, cooldown: 0, weight: () => 0, prepare() { return { a: Game.totalAUM() * 0.02, b: Game.totalAUM() * 0.009 }; },
+    text: () => `Votre société gère plus de 10 M$. Un groupe financier propose de racheter une part de votre société de gestion.`,
+    options: [
+      { label: 'Céder 20 %', hint: p => `💰 +${fmtMoney(p.a)} immédiatement · vous ne touchez plus que 80 % des frais`, apply(p) { S.cash += p.a; S.feeShare *= 0.8; } },
+      { label: 'Céder 10 %', hint: p => `💰 +${fmtMoney(p.b)} · 90 % des frais`, apply(p) { S.cash += p.b; S.feeShare *= 0.9; } },
+      { label: 'Rester 100 % indépendant', hint: () => '⭐ +2', apply() { addRep(2); } }
+    ]
+  },
+  {
+    id: 'm_conf', icon: '🎤', title: 'Jalon : conférence annuelle des investisseurs',
+    cond: () => false, cooldown: 0, weight: () => 0, prepare() { return { c1: 40 * U(), c2: 5 * U() }; },
+    text: () => `Avec 50 M$ sous gestion, il est temps d'organiser votre première conférence investisseurs.`,
+    options: [
+      { label: 'Grande conférence', hint: p => `💰 −${fmtMoney(p.c1)} · 🤝 +8 · ⭐ +4`, apply(p) { payCash(p.c1); confAll(8); addRep(4); } },
+      { label: 'Webinaire sobre', hint: p => `💰 −${fmtMoney(p.c2)} · 🤝 +3`, apply(p) { payCash(p.c2); confAll(3); } },
+      { label: 'Ne rien organiser', hint: () => '🤝 −2', apply() { confAll(-2); } }
+    ]
+  },
+  {
+    id: 'm_rank', icon: '🏅', title: 'Jalon : classement des meilleurs fonds',
+    cond: () => false, cooldown: 0, weight: () => 0, prepare() { return {}; },
+    text: () => `Votre fonds entre dans le classement annuel des meilleurs hedge funds. Comment réagir ?`,
+    options: [
+      { label: 'Communiquer massivement', hint: () => '⭐ +6 · 🤝 +3', apply() { addRep(6); confAll(3); } },
+      { label: 'Rester discret', hint: () => '🛡️ +4 · ⭐ +2', apply() { addCompliance(4); addRep(2); } },
+      { label: 'Recruter en surfant sur la notoriété', hint: () => 'Nouveaux candidats de meilleur niveau · ⭐ +2', apply() { addRep(2); Team.refreshCandidates(true); S.team.candidates.forEach(c => { c.level = Math.min(9, c.level + 2); }); } }
+    ]
+  },
   {
     // Déclenché par la prop firm (jamais tiré au hasard)
     id: 'fund_launch', prop: true, icon: '🚀', title: 'Vos résultats circulent…',
@@ -2053,8 +2237,226 @@ const Events = {
     Team.invalidate();
     Portfolio.syncNavps();
     Game.log(`↳ Décision : « ${opt.label} ».`, 'info');
+    if (S.quarter) S.quarter.decisions.push(`${e.icon} ${e.title} → ${opt.label}`);
     UI.closeModal();
+    const q = S.events.queue;
+    if (q && q.length && !S.events.pending) this.trigger(q.shift());
+    if (!S.events.pending && S.events.victoryQueued) { S.events.victoryQueued = false; UI.showVictory(); }
     UI.renderAll();
+  }
+};
+
+/* =============================================================================
+   9b. BOUCLE DE JEU ÉTENDUE — stratégies, trimestres, succès, opportunités,
+       fonds satellites, jalons
+   ============================================================================= */
+
+/* --- Objectifs et rapport trimestriels (après le lancement du fonds) --- */
+const GOALS = [
+  { id: 'beat', text: () => "Battre l'indice de référence (60/40)", live: q => q.ret - q.benchRet, ok: q => q.ret >= q.benchRet, fmt: v => fmtPct(v, 1, true) + ' vs indice' },
+  { id: 'ret', gen: () => ({ x: pick([0.02, 0.03, 0.04]) }), text: p => `Rendement trimestriel ≥ ${fmtPct(p.x, 0, true)}`, live: q => q.ret, ok: (q, p) => q.ret >= p.x, fmt: v => fmtPct(v, 1, true) },
+  { id: 'dd', gen: () => ({ x: pick([0.05, 0.08]) }), text: p => `Drawdown du trimestre ≤ ${fmtPct(p.x, 0)}`, live: q => q.maxDD, ok: (q, p) => q.maxDD <= p.x, fmt: v => fmtPct(v, 1) + ' de drawdown' },
+  { id: 'flows', text: () => 'Flux nets de clients positifs', live: q => q.subs - q.reds, ok: q => q.subs >= q.reds, fmt: v => fmtMoney(v) + ' nets' },
+  { id: 'calm', text: () => 'Risque moyen < 60 et aucun margin call', live: q => q.riskAvg, ok: q => q.mc === 0 && q.riskAvg < 60, fmt: v => 'risque moyen ' + Math.round(v) }
+];
+const Quarter = {
+  goalDef() { return S.goal && GOALS.find(g => g.id === S.goal.id); },
+  start() {
+    const g = pick(GOALS);
+    S.goal = { id: g.id, p: g.gen ? g.gen() : {}, reward: 8 * U() };
+    S.quarter = { start: S.week, nav: S.fund.navps, bench: S.bench.value, aum: Game.totalAUM(), cash: S.cash, peak: S.fund.navps, maxDD: 0,
+      subs: 0, reds: 0, mgmt: 0, perf: 0, sal: 0, risk: 0, n: 0, mc: S.counters.marginCalls, pnl: {}, regimes: [], decisions: [] };
+  },
+  /* Statistiques courantes du trimestre */
+  live() {
+    const q = S.quarter;
+    return { ret: S.fund.navps / q.nav - 1, benchRet: S.bench.value / q.bench - 1, maxDD: q.maxDD, subs: q.subs, reds: q.reds,
+      riskAvg: q.n ? q.risk / q.n : S.risk, mc: S.counters.marginCalls - q.mc };
+  },
+  step() {
+    if (!S.prop.launched) return;
+    if (!S.quarter) return this.start();
+    const q = S.quarter;
+    q.subs += S.last.subs; q.reds += S.last.reds; q.mgmt += S.last.mgmt; q.perf += S.last.perf; q.sal += S.last.salaries;
+    q.risk += S.risk; q.n++;
+    q.peak = Math.max(q.peak, S.fund.navps); q.maxDD = Math.max(q.maxDD, 1 - S.fund.navps / q.peak);
+    for (const k in (S.last.pnl || {})) q.pnl[k] = (q.pnl[k] || 0) + S.last.pnl[k];
+    if (S.week - q.start >= 13) this.end();
+  },
+  end() {
+    const q = S.quarter, L = this.live(), g = this.goalDef();
+    const ok = g.ok(L, S.goal.p);
+    S.quarterN++;
+    if (ok) { S.goalStreak++; S.goalsDone++; S.cash += S.goal.reward; addRep(2); confAll(2); }
+    else { S.goalStreak = 0; addRep(-1); confAll(-3); }
+    const pnl = Object.entries(q.pnl).filter(([, v]) => Math.abs(v) > 1e-9).sort((a, b) => b[1] - a[1]);
+    const name = k => k === 'opps' ? 'Opportunités' : CONFIG.ASSETS[k].name;
+    S.lastReport = {
+      n: S.quarterN, week: S.week, ret: L.ret, benchRet: L.benchRet, aum0: q.aum, aum1: Game.totalAUM(), subs: q.subs, reds: q.reds,
+      fees: q.mgmt + q.perf, sal: q.sal, maxDD: q.maxDD, goal: g.text(S.goal.p), ok, reward: S.goal.reward, streak: S.goalStreak,
+      best: pnl.length ? [name(pnl[0][0]), pnl[0][1]] : null, worst: pnl.length > 1 ? [name(pnl[pnl.length - 1][0]), pnl[pnl.length - 1][1]] : null,
+      regimes: q.regimes, decisions: q.decisions.slice(-6)
+    };
+    Game.log(`📄 Rapport trimestriel n°${S.quarterN} : ${fmtPct(L.ret, 1, true)} (indice ${fmtPct(L.benchRet, 1, true)}). Objectif « ${g.text(S.goal.p)} » ${ok ? 'atteint ✅' : 'manqué ❌'}.`, ok ? 'good' : 'warn');
+    this.start();
+    if (S.showReports && !S.events.pending && !UI.batch) UI.showReport();
+    else UI.toast(`📄 Rapport trimestriel : objectif ${ok ? 'atteint ✅' : 'manqué ❌'}`, ok ? 'good' : 'warn');
+  }
+};
+
+/* --- Succès --- */
+const ACHIEVEMENTS = [
+  { id: 'prop_first', icon: '🎯', name: 'Du premier coup', desc: 'Réussir le challenge prop firm à la première tentative', test: s => s.prop.passes >= 1 && s.prop.attempts === 1 },
+  { id: 'launch', icon: '🚀', name: 'Gérant indépendant', desc: 'Lancer votre fonds', test: s => s.prop.launched },
+  { id: 'crisis', icon: '🔥', name: 'Sang-froid', desc: 'Traverser une crise complète sans margin call', test: s => !!s.events.flags.crisisSurvived },
+  { id: 'bench52', icon: '🏁', name: 'Alpha prouvé', desc: "Battre l'indice de référence sur 52 semaines", test: s => s.prop.launched && s.fund.navHist.length > 52 && s.bench.hist.length > 52 &&
+      s.fund.navHist[s.fund.navHist.length - 1] / s.fund.navHist[s.fund.navHist.length - 53] > s.bench.hist[s.bench.hist.length - 1] / s.bench.hist[s.bench.hist.length - 53] },
+  { id: 'solo3', icon: '🧍', name: 'Loup solitaire', desc: 'Atteindre le palier 3 sans jamais avoir recruté', test: s => s.tier >= 3 && !s.events.flags.everHired },
+  { id: 'streak4', icon: '📅', name: 'Régularité', desc: "Réussir 4 objectifs trimestriels d'affilée", test: s => s.goalStreak >= 4 },
+  { id: 'opp', icon: '💎', name: 'Coup de maître', desc: 'Gagner au moins 30 % sur une opportunité', test: s => !!s.events.flags.bigOpp },
+  { id: 'team10', icon: '👥', name: 'Vraie boutique', desc: 'Avoir 10 employés', test: s => s.team.employees.length >= 10 },
+  { id: 'tier5', icon: '🏢', name: 'Un étage à soi', desc: 'Atteindre le palier 5', test: s => s.tier >= 5 },
+  { id: 'tier8', icon: '🏙️', name: 'Poids lourd régional', desc: 'Atteindre le palier 8', test: s => s.tier >= 8 },
+  { id: 'multi', icon: '🧩', name: 'Multi-fonds', desc: 'Lancer un fonds satellite', test: s => s.satellites.length > 0 },
+  { id: 'cashM', icon: '💰', name: 'Millionnaire', desc: '1 M$ de trésorerie dans la société', test: s => s.cash >= 1e6 },
+  { id: 'win', icon: '🏆', name: 'Légende', desc: 'Remporter la partie', test: s => s.won }
+];
+const Achievements = {
+  check() {
+    for (const a of ACHIEVEMENTS) {
+      if (S.achievements[a.id] !== undefined || !a.test(S)) continue;
+      S.achievements[a.id] = S.week;
+      S.rp += 5;
+      Game.log(`🏅 Succès débloqué : ${a.icon} ${a.name} (+5 🔬).`, 'tier');
+      UI.toast(`🏅 Succès : ${a.icon} ${a.name}`, 'tier');
+    }
+  }
+};
+
+/* --- Opportunités ponctuelles (onglet Marché) --- */
+const OPP_TYPES = [
+  { id: 'value', icon: '🔍', name: 'Société sous-évaluée', tier: 1, p: [0.55, 0.7], up: [0.25, 0.45], down: [-0.30, -0.15], weeks: 8 },
+  { id: 'merger', icon: '🤝', name: 'Arbitrage de fusion', tier: 1, p: [0.80, 0.9], up: [0.06, 0.10], down: [-0.25, -0.15], weeks: 6 },
+  { id: 'ipo', icon: '🔔', name: 'Introduction en bourse', tier: 2, p: [0.50, 0.6], up: [0.20, 0.40], down: [-0.30, -0.15], weeks: 4 },
+  { id: 'distressed', icon: '🏚️', name: 'Dette en détresse', tier: 3, p: [0.45, 0.6], up: [0.40, 0.80], down: [-0.60, -0.35], weeks: 12 },
+  { id: 'macro', icon: '💱', name: 'Pari macro sur une devise', tier: 5, p: [0.50, 0.65], up: [0.15, 0.30], down: [-0.20, -0.10], weeks: 10 },
+  { id: 'fraud', icon: '🕵️', name: 'Fraude comptable suspectée (short)', tier: 5, p: [0.40, 0.6], up: [0.30, 0.60], down: [-0.40, -0.20], weeks: 8 }
+];
+const COMPANIES = ['Novatek', 'Helios Energy', 'Brightwater', 'Kappa Logistics', 'Orion Pharma', 'Vexa Robotics', 'Lumen Retail', 'Atlas Mining', 'Quantix', 'Solaris Foods', 'Nordia Bank', 'Zephyr Air'];
+const Opps = {
+  maxShare: 0.25,   // part max de l'AUM engagée dans des opportunités
+  /* Probabilité estimée affichée et sa marge d'erreur */
+  err() { return 0.03 + 0.25 * (1 - Team.infoQuality()); },
+  generate() {
+    if (!S.prop.launched) return;
+    S.opps = S.opps.filter(o => o.status === 'open' && o.expires > S.week);
+    if (S.week < S.nextOppWeek || S.opps.length >= 2) return;
+    S.nextOppWeek = S.week + Math.round(randInt(6, 10) / (1 + Strat.b('oppFreq')));
+    const T = pick(OPP_TYPES.filter(t => S.tier >= t.tier));
+    const p = clamp(rand(T.p[0], T.p[1]) + Strat.b('oppP'), 0.05, 0.95);
+    const o = { id: S.week * 10 + randInt(0, 9), type: T.id, icon: T.icon, title: `${T.name} : ${pick(COMPANIES)}`, p, up: rand(T.up[0], T.up[1]), down: rand(T.down[0], T.down[1]),
+      weeks: T.weeks, expires: S.week + 3, status: 'open' };
+    o.shownP = clamp(p + gauss() * this.err(), 0.05, 0.95);
+    S.opps.push(o);
+    Game.log(`💡 Nouvelle opportunité : ${o.icon} ${o.title} (horizon ${o.weeks} sem.).`, 'info');
+    UI.toast(`💡 Opportunité : ${o.title}`, 'info');
+  },
+  invest(id, frac) {
+    const o = S.opps.find(x => x.id === id && x.status === 'open');
+    if (!o) return;
+    const A = Portfolio.aum();
+    const room = Math.max(0, A * this.maxShare - Portfolio.specialsValue());
+    const amt = Math.min(A * frac, room, Portfolio.liquid());
+    if (amt <= 0) return UI.toast(`Limite atteinte : ${fmtPct(this.maxShare, 0)} de l'AUM maximum en opportunités.`, 'warn');
+    Portfolio.withdraw(amt);
+    S.fund.specials.push({ id: o.id, title: o.title, icon: o.icon, amount: amt, maturity: S.week + o.weeks, p: o.p, up: o.up, down: o.down });
+    o.status = 'taken';
+    Portfolio.syncNavps();
+    Game.log(`💡 Investissement de ${fmtMoney(amt)} dans « ${o.title} ».`, 'info');
+    UI.renderAll();
+  },
+  /* Dénouement à l'échéance (étape 5b du tick) */
+  mature() {
+    const sp = S.fund.specials || [];
+    for (const x of sp.filter(x => x.maturity <= S.week)) {
+      const win = rng() < x.p;
+      const r = win ? x.up : x.down;
+      const val = x.amount * (1 + r);
+      S.fund.specials = S.fund.specials.filter(y => y !== x);
+      Portfolio.deposit(val);
+      if (S.quarter) S.quarter.pnl.opps = (S.quarter.pnl.opps || 0) + (val - x.amount);
+      if (win && r >= 0.3) S.events.flags.bigOpp = true;
+      Game.log(`${win ? '✅' : '❌'} Opportunité « ${x.title} » dénouée : ${fmtPct(r, 0, true)} (${fmtMoney(val - x.amount)}).`, win ? 'good' : 'bad');
+      UI.toast(`${win ? '✅' : '❌'} ${x.title} : ${fmtPct(r, 0, true)}`, win ? 'good' : 'bad');
+    }
+    Portfolio.syncNavps();
+  }
+};
+
+/* --- Fonds satellites (palier 7+) --- */
+const SAT_TYPES = {
+  prudence:     { name: 'Fonds Prudence', icon: '🛡️', w: { bonds: 0.65, equities: 0.25 }, objective: 0.05, clients: 'Fonds de pension et institutionnels (conformité ≥ 65)', minCompliance: 65, flow: 1.0 },
+  opportunites: { name: 'Fonds Opportunités', icon: '🚀', w: { equities: 0.70, commodities: 0.15, crypto: 0.10 }, objective: 0.12, clients: 'UHNWI et family offices', minCompliance: 0, flow: 1.2 }
+};
+const Satellites = {
+  maxCount() { return S.tier >= 9 ? 2 : S.tier >= 7 ? 1 : 0; },
+  cost() { return 100 * U(); },
+  perf(x) { const h = x.hist; if (h.length < 5) return 0.06; const n = Math.min(26, h.length - 1); return clamp((h[h.length - 1] / h[h.length - 1 - n] - 1) * 52 / n, -0.8, 1.5); },
+  launch(type) {
+    if (S.satellites.length >= this.maxCount() || S.satellites.some(x => x.type === type)) return;
+    if (S.cash < this.cost()) return UI.toast('Cash insuffisant pour lancer un fonds.', 'bad');
+    S.cash -= this.cost();
+    const seed = Portfolio.aum() * 0.03;
+    S.satellites.push({ id: S.nextSatId++, type, aum: seed, navps: 100, hwm: 100, conf: 55, start: S.week, hist: [100], lastFlow: 0 });
+    Game.log(`🧩 Lancement du ${SAT_TYPES[type].name} avec ${fmtMoney(seed)} de nouveaux clients.`, 'tier');
+    UI.toast(`🧩 ${SAT_TYPES[type].name} lancé !`, 'tier');
+    UI.renderAll();
+  },
+  close(id) {
+    const x = S.satellites.find(y => y.id === id); if (!x) return;
+    S.satellites = S.satellites.filter(y => y !== x);
+    addRep(-2);
+    Game.log(`Fermeture du ${SAT_TYPES[x.type].name} : les clients récupèrent leurs ${fmtMoney(x.aum)}.`, 'warn');
+    UI.renderAll();
+  },
+  step() {
+    const r = S.market.lastReturns;
+    for (const x of S.satellites.slice()) {
+      const T = SAT_TYPES[x.type];
+      let ret = 0, wsum = 0;
+      for (const k in T.w) { const kk = Market.isUnlocked(k) ? k : 'equities'; ret += T.w[k] * (r[kk] + Portfolio.alpha(kk) / 52); wsum += T.w[k]; }
+      x.navps *= 1 + ret; x.aum *= 1 + ret;
+      const mg = x.aum * CONFIG.MGMT_FEE / 52;
+      x.aum -= mg; x.navps *= 1 - CONFIG.MGMT_FEE / 52; S.cash += mg * S.feeShare;
+      if ((S.week - x.start) % CONFIG.PERF_FEE_PERIOD === 0 && x.navps > x.hwm) {
+        const fee = (x.navps / x.hwm - 1) * x.aum * CONFIG.PERF_FEE;
+        x.aum -= fee; x.navps *= 1 - fee / (x.aum + fee); S.cash += fee * S.feeShare; x.hwm = x.navps;
+      }
+      x.hist.push(x.navps); if (x.hist.length > 60) x.hist.shift();
+      const perf = this.perf(x);
+      let d = clamp((perf - T.objective) * 8, -1.5, 1.5) + (S.reputation - 30) / 50 * 0.4 + (55 - x.conf) * 0.05;
+      if (S.compliance < T.minCompliance) d -= 1.5;
+      x.conf = clamp(x.conf + d + gauss() * 0.6, 0, 100);
+      let flow = x.aum * 0.003 * Investors.attractiveness() * T.flow * Investors.saturation(x.aum) * (x.conf > 40 ? 1 : 0);
+      if (x.conf < 40) flow -= x.aum * (40 - x.conf) / 40 * 0.08;
+      x.aum = Math.max(0, x.aum + flow); x.lastFlow = flow;
+      if (x.aum < 1000) { Game.log(`Le ${T.name} n'a plus de clients et ferme.`, 'bad'); S.satellites = S.satellites.filter(y => y !== x); }
+    }
+  }
+};
+
+/* --- Jalons narratifs du milieu de partie --- */
+const MILESTONES = [{ id: 'm_press', at: 5e5 }, { id: 'm_dd', at: 2.5e6 }, { id: 'm_equity', at: 1e7 }, { id: 'm_conf', at: 5e7 }, { id: 'm_rank', at: 2.5e8 }];
+const Milestones = {
+  check() {
+    if (!S.prop.launched) return;
+    const A = Game.totalAUM();
+    for (const m of MILESTONES) {
+      if (S.events.flags[m.id] || A < m.at) continue;
+      S.events.flags[m.id] = true;
+      Events.trigger(m.id);
+      return;
+    }
   }
 };
 
@@ -2081,7 +2483,7 @@ const Progression = {
 
   /* Étape 9 du tick : déménagement automatique (irréversible sauf hard mode) */
   checkTier() {
-    const A = Portfolio.aum();
+    const A = Game.totalAUM();
     const t = this.tierForAUM(A);
     if (t > S.tier) {
       const from = S.tier;
@@ -2125,15 +2527,16 @@ const Progression = {
 
   /* Étape 10 du tick : victoire / défaite */
   checkEnd() {
-    const A = Portfolio.aum();
+    const A = Game.totalAUM();
     const c = S.counters, mode = CONFIG.MODES[S.difficulty];
     S.stats.peakAUM = Math.max(S.stats.peakAUM, A);
-    if (A >= CONFIG.COLLAPSE_AFTER) S.investors.everAbove = true;
+    if (Portfolio.aum() >= CONFIG.COLLAPSE_AFTER) S.investors.everAbove = true;
 
     if (!S.won && A >= CONFIG.WIN_AUM && S.reputation >= CONFIG.WIN_REP) {
       S.won = true;
       Game.log('🏆 VICTOIRE : 1 Md$ sous gestion et une réputation d’exception !', 'tier');
-      UI.showVictory();
+      if (S.events.pending) S.events.victoryQueued = true; // affichée après la décision en cours
+      else UI.showVictory();
       return;
     }
     // Faillite : cash < 0 ET risque > 90 de façon durable
@@ -2146,7 +2549,7 @@ const Progression = {
     } else c.lowComplianceWeeks = 0;
     if (c.lowComplianceWeeks >= mode.licenseWeeks) return this.lose('Licence révoquée', 'Le régulateur suspend votre licence de gestion après des manquements répétés.');
     // Effondrement de l'AUM
-    if (S.investors.everAbove && A < CONFIG.COLLAPSE_AUM) return this.lose('Effondrement de l’AUM', 'Vos clients sont partis : le fonds ne gère plus que des miettes.');
+    if (S.investors.everAbove && Portfolio.aum() < CONFIG.COLLAPSE_AUM) return this.lose('Effondrement de l’AUM', 'Vos clients sont partis : le fonds ne gère plus que des miettes.');
   },
   lose(title, why) {
     S.status = 'lost';
@@ -2194,29 +2597,83 @@ const Game = {
     Portfolio.weeklyTrading();     // 3. frais de transaction (stop-loss, rééquilibrage)
     Team.paySalaries();            // 4. salaires
     Investors.collectFees();       // 5. frais de gestion + performance
+    Opps.mature();                 // 5b. opportunités arrivées à échéance
     Investors.step();              // 6. flux des investisseurs
+    Satellites.step();             // 6b. fonds satellites
     Risk.step();                   // 7. risque, conformité, réputation, recherche
     Team.refreshCandidates(false);
+    Team.updateMorale();
+    Team.advise();
+    Opps.generate();
+    Quarter.step();                // 7b. objectifs et rapport trimestriels
     Events.maybeTrigger();         // 8. événements
     if (S.status === 'playing') Progression.checkTier();   // 9. palier
+    if (S.status === 'playing' && !S.events.pending) Milestones.check();
     if (S.status === 'playing') Progression.checkEnd();    // 10. victoire / défaite
+    Achievements.check();
     // 11. journal / historique
     S.last.cash = S.cash - cash0;
     S.last.aum = Portfolio.aum() - aum0;
     this.recordHistory();
-    if (S.week % 13 === 0) this.log(`Bilan trimestriel : AUM ${fmtMoney(Portfolio.aum())}, NAV ${fmtNum(S.fund.navps, 2)}, perf. 26 sem. ${fmtPct(Investors.perfAnnual(26), 1, true)}/an.`, 'info');
     if (S.week % CONFIG.AUTOSAVE_EVERY === 0) Save.save(true);
     S.seed = RNG.seed;
-    UI.renderAll();
+    if (!UI.batch) UI.renderAll();
     return true;
+  },
+
+  /* AUM total de la société : fonds principal + fonds satellites */
+  totalAUM() { return Portfolio.aum() + (S.satellites || []).reduce((a, x) => a + x.aum, 0); },
+
+  /* Avance rapide jusqu'au prochain fait marquant (max 26 semaines) */
+  skip() {
+    if (!S || S.status !== 'playing') return;
+    if (S.events.pending) return UI.showEvent();
+    const t0 = S.tier, p0 = S.market.perceived, q0 = S.quarterN, a0 = S.advice.length ? S.advice[0].id : null, o0 = S.opps.length, ph0 = S.prop.phase;
+    UI.batch = true;
+    let n = 0, why = 'limite de 26 semaines';
+    try {
+      while (n < 26) {
+        if (!this.tick()) break;
+        n++;
+        if (S.status !== 'playing') { why = 'fin de partie'; break; }
+        if (S.events.pending) { why = 'événement'; break; }
+        if (S.tier !== t0) { why = 'déménagement'; break; }
+        if (S.market.perceived !== p0) { why = 'changement de régime'; break; }
+        if (S.quarterN !== q0) { why = 'rapport trimestriel'; break; }
+        if (S.prop.phase !== ph0) { why = 'étape prop firm'; break; }
+        if (S.advice.length && S.advice[0].id !== a0) { why = 'conseil de l’équipe'; break; }
+        if (S.opps.length > o0) { why = 'nouvelle opportunité'; break; }
+      }
+    } finally { UI.batch = false; }
+    UI.renderAll();
+    UI.toast(`⏭️ ${n} semaine(s) passée(s) — arrêt : ${why}.`, 'info');
+    if (S.events.pending) UI.showEvent();
+  },
+
+  /* Bilan de fin de régime : votre NAV comparée au préréglage Équilibré */
+  regimeReport(prev) {
+    const st = S.regimeStat;
+    const navNow = S.fund.navps;
+    if (st && st.regime === prev && S.week - st.week >= 2) {
+      const you = navNow / st.nav - 1, ref = S.bench.bal / st.bal - 1;
+      const R = CONFIG.REGIMES[prev];
+      const txt = `Bilan du régime ${R.icon} ${R.name} (${S.week - st.week} sem.) : vous ${fmtPct(you, 1, true)}, préréglage Équilibré ${fmtPct(ref, 1, true)}.`;
+      this.log(txt, you >= ref ? 'good' : 'warn');
+      UI.toast(txt, you >= ref ? 'good' : 'warn');
+      if (S.quarter) S.quarter.regimes.push({ icon: R.icon, name: R.name, weeks: S.week - st.week, you, ref });
+      if (prev === 'crisis' && S.counters.marginCalls === st.mc) S.events.flags.crisisSurvived = true;
+    }
+    S.regimeStat = { regime: S.market.regime, week: S.week, nav: navNow, bal: S.bench.bal, mc: S.counters.marginCalls };
   },
 
   recordHistory() {
     const h = S.history;
-    h.week.push(S.week); h.navps.push(S.fund.navps); h.aum.push(Portfolio.aum());
+    h.week.push(S.week); h.navps.push(S.fund.navps); h.aum.push(this.totalAUM()); h.bench.push(S.bench.value);
+    S.bench.hist.push(S.bench.value);
+    if (S.bench.hist.length > 120) S.bench.hist.shift();
     if (h.week.length > 700) { // sous-échantillonnage de la moitié la plus ancienne
       const half = 350;
-      for (const key of ['week', 'navps', 'aum']) h[key] = h[key].slice(0, half).filter((_, i) => i % 2 === 0).concat(h[key].slice(half));
+      for (const key of ['week', 'navps', 'aum', 'bench']) h[key] = h[key].slice(0, half).filter((_, i) => i % 2 === 0).concat(h[key].slice(half));
     }
     S.fund.navHist.push(S.fund.navps);
     if (S.fund.navHist.length > 120) S.fund.navHist.shift();
@@ -2292,6 +2749,9 @@ const Save = {
       const fresh = createState(data.difficulty || 'casual', data.fundName, Legacy.get());
       S = deepMerge(fresh, data);
       if (!data.prop) { S.prop.launched = true; S.prop.phase = 'off'; } // sauvegarde antérieure à la prop firm
+      const hb = S.history.bench, hw = S.history.week.length;
+      if (hb.length < hw) S.history.bench = Array(hw - hb.length).fill(100).concat(hb);
+      if (S.prop.launched && !S.strategy && !S.events.pending) S.events.queue = ['fund_strategy'];
       RNG.seed = (S.seed >>> 0) || RNG.seed;
       Team.invalidate();
       UI.toast('📂 Partie chargée.', 'good');
@@ -2342,6 +2802,7 @@ const TABS = [
 
 const UI = {
   enabled: true,
+  batch: false,
   tab: 'market',
   chart: null,
   chartLoaded: false,
@@ -2354,6 +2815,7 @@ const UI = {
   init() {
     this.$('btnNext').addEventListener('click', () => Game.tick());
     this.$('btnAuto').addEventListener('click', () => this.toggleAuto());
+    this.$('btnSkip').addEventListener('click', () => Game.skip());
     this.$('btnSave').addEventListener('click', () => Save.save(false));
     this.$('btnLoad').addEventListener('click', () => this.confirm('Charger la sauvegarde ?', 'La partie en cours non sauvegardée sera perdue.', () => { if (Save.load()) this.afterLoad(); }));
     this.$('btnSettings').addEventListener('click', () => this.showSettings());
@@ -2404,6 +2866,12 @@ const UI = {
       }
       case 'auto-rebal': S.fund.autoRebalance = !S.fund.autoRebalance; this.renderTab(); break;
       case 'prop-buy': Prop.buyChallenge(); break;
+      case 'opp': Opps.invest(id, Number(el.dataset.f)); break;
+      case 'advice': Team.applyAdvice(id); break;
+      case 'bonus': Team.bonus(id); break;
+      case 'sat-launch': Satellites.launch(k); break;
+      case 'sat-close': this.confirm('Fermer ce fonds ?', 'Les clients récupèrent leur argent (réputation −2).', () => Satellites.close(id)); break;
+      case 'report': this.showReport(); break;
       case 'prop-quit': this.confirm('Quitter la prop firm ?', 'Vous ne toucherez plus de versements.', () => Prop.quit()); break;
       case 'founder-in': Investors.founderInvest(S.cash * Number(el.dataset.f)); break;
       case 'founder-out': {
@@ -2472,6 +2940,8 @@ const UI = {
       <div class="tier-badge"><span class="ic">${T.icon}</span><div><div><span class="lvl">Palier ${S.tier}</span> ${T.name}</div><div class="small muted">${T.local} · capacité ${S.team.employees.length}/${T.cap === Infinity ? '∞' : T.cap}${T.bonusTxt !== '—' ? ' · ' + T.bonusTxt : ''}</div></div></div>
       <div class="tier-progress"><div class="row between small"><span class="muted">${nextTxt}</span><span class="num">${fmtPct(prog, 0)}</span></div><div class="bar"><div style="width:${prog * 100}%"></div></div></div>`;
 
+    this.renderGoalBar();
+    this.$('btnSkip').disabled = S.status !== 'playing';
     const gauge = (v, color) => `<div class="gauge"><div style="width:${clamp(v, 0, 100)}%;background:${color}"></div></div>`;
     const colHigh = v => v > 90 ? 'var(--red)' : v > 70 ? 'var(--amber)' : v > 50 ? '#facc15' : 'var(--green)';
     const colLow = v => v < 20 ? 'var(--red)' : v < 50 ? 'var(--amber)' : 'var(--green)';
@@ -2479,6 +2949,7 @@ const UI = {
     const items = [
       { l: 'Cash société', v: fmtMoney(S.cash), s: `<span class="${cls(S.last.cash)}">${S.last.cash >= 0 ? '+' : ''}${fmtMoney(S.last.cash)}/sem</span>`, c: S.cash < 0 ? 'red' : '' },
       !S.prop.launched ? { l: 'Compte prop', v: Prop.active() ? fmtMoney(S.prop.equity) : '—', s: `<span class="muted">${{ idle: 'aucun compte', challenge: 'challenge', funded: 'financé', off: '' }[S.prop.phase]}</span>` } :
+      S.satellites.length ? { l: 'AUM total', v: fmtMoney(Game.totalAUM()), s: `<span class="muted">fonds principal ${fmtMoney(A)}</span>` } :
       { l: 'AUM', v: fmtMoney(A), s: `<span class="${cls(S.last.subs - S.last.reds)}">flux ${S.last.subs - S.last.reds >= 0 ? '+' : ''}${fmtMoney(S.last.subs - S.last.reds)}</span>` },
       { l: 'NAV / part', v: fmtNum(S.fund.navps, 2), s: `<span class="${cls(S.last.fundReturn)}">${fmtPct(S.last.fundReturn, 2, true)} sem.</span>` },
       { l: 'Réputation', v: `${Math.round(S.reputation)}<span class="small muted">/100</span>`, s: gauge(S.reputation, 'var(--accent)') },
@@ -2491,6 +2962,19 @@ const UI = {
     this.$('stats').innerHTML = items.map(i => `<div class="stat"><div class="lab">${i.l}</div><div class="val num ${i.c || ''}">${i.v}</div><div class="sub num">${i.s}</div></div>`).join('');
     this.$('btnAuto').textContent = `⏩ Auto : ${this.autoTimer ? 'ON' : 'OFF'}`;
     this.$('btnAuto').classList.toggle('on', !!this.autoTimer);
+  },
+  /* Bandeau : indice de référence + objectif du trimestre */
+  renderGoalBar() {
+    const el = this.$('goalBar');
+    const you = S.fund.navps / CONFIG.START_NAVPS - 1, idx = S.bench.value / 100 - 1;
+    let html = `<div>📊 <b>Vous vs indice 60/40</b> (depuis le début) : <span class="num ${cls(you)}">${fmtPct(you, 1, true)}</span> vs <span class="num ${cls(idx)}">${fmtPct(idx, 1, true)}</span> <span class="pill ${you >= idx ? 'g' : 'r'}">${you >= idx ? 'devant' : 'derrière'} de ${fmtPct(Math.abs(you - idx), 1)}</span></div>`;
+    if (S.prop.launched && S.goal && S.quarter) {
+      const g = Quarter.goalDef(), L = Quarter.live(), ok = g.ok(L, S.goal.p);
+      html += `<div>🎯 <b>Objectif du trimestre :</b> ${g.text(S.goal.p)} — <span class="${ok ? 'green' : 'amber'}">${ok ? '✅ en bonne voie' : '⏳ pas encore'}</span> (${g.fmt(g.live(L))}) · ${Math.max(0, 13 - (S.week - S.quarter.start))} sem. restantes · prime ${fmtMoney(S.goal.reward)} · série ${S.goalStreak}</div>`;
+    }
+    if (S.strategy) html += `<div class="muted">${STRATEGIES[S.strategy].icon} ${STRATEGIES[S.strategy].name}</div>`;
+    if (S.lastReport) html += `<button class="btn small" data-act="report">📄 Dernier rapport</button>`;
+    el.innerHTML = html;
   },
   renderTabs() {
     if (!S) return;
@@ -2554,7 +3038,28 @@ const UI = {
         <div class="card"><h4>Facteurs temporaires</h4><div class="row">${mods}</div>
           <div class="small muted mt">Régimes possibles : 🐂 haussier, ↔️ latéral, 🐻 baissier, 🔥 crise (corrélations ↑, volatilité ↑), 🫧 bulle (les actifs risqués surperforment… puis chutent).</div></div>
       </div>
+      ${this.adviceAndOpps()}
       <div class="grid g4 mt">${cards}</div>`;
+  },
+  adviceAndOpps() {
+    const adv = S.advice.map(a => `<div class="kv small"><span>${esc(a.text)}</span>${a.act ? `<button class="btn small" data-act="advice" data-id="${a.id}">Appliquer</button>` : ''}</div>`).join('')
+      || '<div class="small muted">Rien à signaler. Recrutez (risk analyst, analystes, trader…) : ils vous alerteront et feront des recommandations.</div>';
+    let opps;
+    if (!S.prop.launched) opps = '<div class="small muted">Les opportunités ponctuelles apparaissent une fois votre fonds lancé.</div>';
+    else {
+      const A = Portfolio.aum(), err = Opps.err();
+      const open = S.opps.filter(o => o.status === 'open' && o.expires > S.week).map(o => {
+        const ev = o.shownP * o.up + (1 - o.shownP) * o.down;
+        return `<div class="card" style="margin-top:6px"><b>${o.icon} ${esc(o.title)}</b>
+          <div class="small">Succès : <span class="green">${fmtPct(o.up, 0, true)}</span> · échec : <span class="red">${fmtPct(o.down, 0, true)}</span> · horizon ${o.weeks} sem. · expire dans ${o.expires - S.week} sem.</div>
+          <div class="small">Probabilité de succès estimée : <b>${fmtPct(o.shownP, 0)}</b> <span class="muted">±${fmtPct(err, 0)}</span> · espérance estimée <span class="${cls(ev)}">${fmtPct(ev, 1, true)}</span></div>
+          <div class="row mt">${[0.02, 0.05, 0.1].map(f => `<button class="btn small" data-act="opp" data-id="${o.id}" data-f="${f}">Investir ${fmtPct(f, 0)} (${fmtMoney(A * f)})</button>`).join('')}</div></div>`;
+      }).join('');
+      const held = (S.fund.specials || []).map(x => `<div class="kv small"><span>${x.icon} ${esc(x.title)}</span><span class="num">${fmtMoney(x.amount)} · échéance dans ${x.maturity - S.week} sem.</span></div>`).join('');
+      opps = (open || '<div class="small muted">Aucune opportunité ouverte. Prochaine dans quelques semaines.</div>') + (held ? `<h4 class="mt">Positions en cours</h4>${held}` : '')
+        + `<div class="small muted mt">Maximum ${fmtPct(Opps.maxShare, 0)} de l'AUM engagé. La fiabilité de la probabilité affichée dépend de la qualité d'information.</div>`;
+    }
+    return `<div class="grid g2 mt"><div class="card"><h4>🗣️ L'équipe vous parle</h4>${adv}</div><div class="card"><h4>💡 Opportunités</h4>${opps}</div></div>`;
   },
 
   /* ---------- Onglet Portefeuille ---------- */
@@ -2681,9 +3186,12 @@ const UI = {
         <div class="traits">${emp.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${emp.spec ? `<span class="pill b">Spécialité : ${CONFIG.ASSETS[emp.spec].name}</span>` : ''}</div>
         <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(emp))}/sem</span></div>
         <div class="kv small"><span class="muted">Puissance</span><span class="num">${fmtNum(Team.power(emp), 1)}</span></div>
+        <div class="kv small"><span class="muted">Moral</span><span class="num ${(emp.morale ?? 70) < 40 ? 'red' : (emp.morale ?? 70) < 60 ? 'amber' : 'green'}">${Math.round(emp.morale ?? 70)}/100</span></div>
+        <div class="gauge"><div style="width:${emp.morale ?? 70}%;background:${(emp.morale ?? 70) < 40 ? 'var(--red)' : (emp.morale ?? 70) < 60 ? 'var(--amber)' : 'var(--green)'}"></div></div>
         <div class="row mt">
           <button class="btn small" data-act="train" data-id="${emp.id}" ${emp.level >= 10 || S.rp < tc.rp || S.cash < tc.cash ? 'disabled' : ''} title="Coût : ${tc.rp} 🔬 + ${fmtMoney(tc.cash)}">Former (${tc.rp} 🔬 · ${fmtMoney(tc.cash)})</button>
           <button class="btn small" data-act="promote" data-id="${emp.id}" ${pb || S.cash < Team.promoCost(emp) ? 'disabled' : ''} title="${pb || 'Coût : ' + fmtMoney(Team.promoCost(emp))}">Promouvoir${pb ? '' : ' (' + fmtMoney(Team.promoCost(emp)) + ')'}</button>
+          <button class="btn small" data-act="bonus" data-id="${emp.id}" ${S.cash < Team.bonusCost(emp) ? 'disabled' : ''} title="Moral +15">Prime (${fmtMoney(Team.bonusCost(emp))})</button>
           <button class="btn small danger" data-act="fire" data-id="${emp.id}">Licencier</button>
         </div>
         ${pb && pb !== 'Rang maximal' ? `<div class="small muted">Promotion : ${pb}</div>` : ''}
@@ -2718,7 +3226,7 @@ const UI = {
           <div class="kv small"><span class="muted">Attractivité (ventes)</span><span>+${fmtPct(e.inflow, 0)}</span></div>
           <div class="kv small"><span class="muted">Recherche</span><span>${fmtNum(Team.rpPerWeek(), 1)} 🔬/sem</span></div></div>
         <div class="card"><h4>Rôles</h4><div class="row">${roles}</div>
-          <div class="small muted mt">Évolution : niveau 4 → Senior, niveau 7 → Head/Chief (un seul par entreprise). Les rôles à 2 titres passent Chief au niveau 6.</div></div>
+          <div class="small muted mt">Évolution : niveau 4 → Senior, niveau 7 → Head/Chief (un seul par entreprise). Les rôles à 2 titres passent Chief au niveau 6. Moral : un employé jamais promu, formé ou récompensé se démotive (efficacité réduite sous 50) et peut démissionner sous 30.</div></div>
       </div>
       <h3 class="mt">Votre équipe</h3>
       <div class="grid g3">${emps}</div>
@@ -2764,10 +3272,25 @@ const UI = {
           ${S.fund.carry ? `<div class="kv"><span class="muted">Carried interest employés</span><span>${fmtPct(S.fund.carry, 0)}</span></div>` : ''}</div>
         <div class="card"><h4>Comment attirer des clients ?</h4><div class="small muted">Les apports dépendent de la réputation, de la confiance, de la performance sur 26 semaines (vs. objectifs), des Sales et du CRM. Les clients sous-performés ou exposés à un risque supérieur à leur tolérance retirent leurs fonds une fois le lock-up passé. Une conformité &lt; 50 fait fuir tout le monde.</div></div>
       </div>
+      ${this.satSection()}
       <h3 class="mt">Par type de client</h3>
       <div class="tablewrap"><table class="t"><thead><tr><th>Type</th><th>Clients</th><th>Capital</th><th>Confiance</th><th>Objectif</th><th>Tolérance risque</th><th>Lock-up</th></tr></thead><tbody>${byType}</tbody></table></div>
       <h3 class="mt">Principaux comptes</h3>
       <div class="tablewrap"><table class="t"><thead><tr><th>Client</th><th>Capital</th><th>Confiance</th><th>Objectif</th><th>Tolérance</th><th>Lock-up</th></tr></thead><tbody>${top || '<tr><td colspan="6" class="muted">Aucun client pour le moment.</td></tr>'}</tbody></table></div>`;
+  },
+
+  satSection() {
+    if (!S.prop.launched) return '';
+    const rows = S.satellites.map(x => { const T = SAT_TYPES[x.type]; return `<tr><td>${T.icon} ${T.name}</td><td class="num">${fmtMoney(x.aum)}</td><td class="num ${cls(Satellites.perf(x))}">${fmtPct(Satellites.perf(x), 1, true)}</td><td class="num">${Math.round(x.conf)}</td><td class="num">${fmtPct(T.objective, 0)}</td><td class="num ${cls(x.lastFlow)}">${fmtMoney(x.lastFlow)}</td><td><button class="btn small danger" data-act="sat-close" data-id="${x.id}">Fermer</button></td></tr>`; }).join('');
+    const max = Satellites.maxCount();
+    const launch = Object.entries(SAT_TYPES).filter(([id]) => !S.satellites.some(x => x.type === id)).map(([id, T]) =>
+      `<div class="card"><b>${T.icon} ${T.name}</b><div class="small muted">${T.clients} · objectif ${fmtPct(T.objective, 0)}/an · allocation fixe ${Object.entries(T.w).map(([k, w]) => CONFIG.ASSETS[k].name + ' ' + fmtPct(w, 0)).join(', ')}</div>
+       ${max === 0 ? '<span class="pill a">🔒 Palier 7</span>' : S.satellites.length >= max ? '<span class="pill a">🔒 2e fonds au palier 9</span>' : `<button class="btn small primary mt" data-act="sat-launch" data-k="${id}" ${S.cash < Satellites.cost() ? 'disabled' : ''}>Lancer (${fmtMoney(Satellites.cost())})</button>`}</div>`).join('');
+    return `<h3 class="mt">🧩 Fonds de la société</h3>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Fonds</th><th>AUM</th><th>Perf. 26 sem.</th><th>Confiance</th><th>Objectif</th><th>Flux/sem</th><th></th></tr></thead>
+      <tbody><tr><td>⭐ ${esc(S.fundName)} (principal)${S.strategy ? ' · ' + STRATEGIES[S.strategy].icon : ''}</td><td class="num">${fmtMoney(Portfolio.aum())}</td><td class="num ${cls(Investors.perfAnnual(26))}">${fmtPct(Investors.perfAnnual(26), 1, true)}</td><td class="num">${Math.round(Investors.globalConfidence())}</td><td>—</td><td class="num ${cls(S.last.subs - S.last.reds)}">${fmtMoney(S.last.subs - S.last.reds)}</td><td></td></tr>${rows}</tbody></table></div>
+      ${launch ? `<div class="grid g2 mt">${launch}</div>` : ''}
+      <div class="small muted mt">Les fonds satellites ont leur propre clientèle et leur allocation fixe ; leurs frais reviennent à la société et leur AUM compte pour les paliers et la victoire.</div>`;
   },
 
   /* ---------- Onglet Améliorations (+ feuille de route des locaux) ---------- */
@@ -2794,7 +3317,10 @@ const UI = {
 
   /* ---------- Onglet Journal ---------- */
   tabJournal() {
-    return `<div class="journal">${S.journal.map(j => `<div class="jline ${j.type}"><span class="w num">Jour ${fmtNum(j.w * 7)}</span><span class="t">${esc(j.t)}</span></div>`).join('')}</div>`;
+    const got = ACHIEVEMENTS.filter(a => S.achievements[a.id] !== undefined).length;
+    const ach = ACHIEVEMENTS.map(a => `<div class="card ${S.achievements[a.id] !== undefined ? '' : 'off'}"><b>${a.icon} ${a.name}</b><div class="muted">${a.desc}</div></div>`).join('');
+    return `<div class="row between"><h3 style="margin:0">🏅 Succès (${got}/${ACHIEVEMENTS.length})</h3>${S.lastReport ? '<button class="btn small" data-act="report">📄 Dernier rapport trimestriel</button>' : ''}</div>
+      <div class="ach mt">${ach}</div><h3>Journal</h3><div class="journal">${S.journal.map(j => `<div class="jline ${j.type}"><span class="w num">Jour ${fmtNum(j.w * 7)}</span><span class="t">${esc(j.t)}</span></div>`).join('')}</div>`;
   },
 
   /* ---------- Graphique NAV (Chart.js, avec repli canvas) ---------- */
@@ -2820,14 +3346,15 @@ const UI = {
             type: 'line',
             data: { labels, datasets: [
               { label: 'NAV / part', data: h.navps.slice(), borderColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d9a066', borderWidth: 2, pointRadius: 0, tension: 0.15, yAxisID: 'y' },
-              { label: 'AUM', data: h.aum.map(v => v > 0 ? v : null), borderColor: '#60a5fa', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.15, yAxisID: 'y1', spanGaps: true }
+              { label: 'AUM', data: h.aum.map(v => v > 0 ? v : null), borderColor: '#60a5fa', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.15, yAxisID: 'y1', spanGaps: true },
+              { label: 'Indice 60/40', data: h.bench.slice(), borderColor: '#8b95a8', borderWidth: 1.2, pointRadius: 0, tension: 0.15, yAxisID: 'y', spanGaps: true }
             ] },
             options: {
               responsive: true, maintainAspectRatio: false, animation: false,
               interaction: { mode: 'index', intersect: false },
               plugins: {
                 legend: { labels: { color: '#8b95a8', boxWidth: 12 } },
-                tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y1' ? 'AUM : ' + fmtMoney(c.parsed.y) : 'NAV : ' + fmtNum(c.parsed.y, 2) } }
+                tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y1' ? 'AUM : ' + fmtMoney(c.parsed.y) : c.dataset.label + ' : ' + fmtNum(c.parsed.y, 2) } }
               },
               scales: {
                 x: { ticks: { color: '#8b95a8', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,.04)' } },
@@ -2841,6 +3368,7 @@ const UI = {
           this.chart.data.datasets[0].data = h.navps.slice();
           this.chart.data.datasets[0].borderColor = TIERS[S.tier - 1].accent;
           this.chart.data.datasets[1].data = h.aum.map(v => v > 0 ? v : null);
+          this.chart.data.datasets[2].data = h.bench.slice();
           this.chart.update('none');
         }
         return;
@@ -2861,13 +3389,19 @@ const UI = {
     const ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const d = S.history.navps;
+    const d = S.history.navps, b = S.history.bench;
     if (d.length < 2) return;
-    const min = Math.min(...d), max = Math.max(...d), rg = max - min || 1;
+    const all = b.length === d.length ? d.concat(b) : d;
+    const min = Math.min(...all), max = Math.max(...all), rg = max - min || 1;
     ctx.strokeStyle = 'rgba(255,255,255,.08)';
     for (let i = 0; i <= 4; i++) { const y = 10 + i * (H - 20) / 4; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W, y); ctx.stroke(); }
     ctx.fillStyle = '#8b95a8'; ctx.font = '11px sans-serif';
     ctx.fillText(fmtNum(max, 1), 2, 14); ctx.fillText(fmtNum(min, 1), 2, H - 6);
+    if (b.length === d.length) {
+      ctx.strokeStyle = '#8b95a8'; ctx.lineWidth = 1; ctx.beginPath();
+      b.forEach((v, i) => { const y = 10 + (1 - (v - min) / rg) * (H - 20); const x = 40 + i / (b.length - 1) * (W - 44); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke();
+    }
     ctx.strokeStyle = TIERS[S.tier - 1].accent; ctx.lineWidth = 2; ctx.beginPath();
     d.forEach((v, i) => { const x = 40 + i / (d.length - 1) * (W - 44); const y = 10 + (1 - (v - min) / rg) * (H - 20); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
@@ -2929,6 +3463,24 @@ const UI = {
       <div class="small muted">Régime : ${CONFIG.REGIMES[S.market.perceived].icon} ${CONFIG.REGIMES[S.market.perceived].name} (estimé) · Cash ${fmtMoney(S.cash)} · AUM ${fmtMoney(Portfolio.aum())}</div>${opts}`, handlers, false);
   },
 
+  showReport() {
+    const r = S.lastReport; if (!r || !this.enabled) return;
+    const kv = (a, b) => `<div class="kv"><span class="muted">${a}</span><span class="num">${b}</span></div>`;
+    this.showModal(`<div class="icon">📄</div><h2>Rapport trimestriel n°${r.n}</h2>
+      ${kv('Performance du fonds', `<span class="${cls(r.ret)}">${fmtPct(r.ret, 1, true)}</span>`)}
+      ${kv('Indice de référence 60/40', `<span class="${cls(r.benchRet)}">${fmtPct(r.benchRet, 1, true)}</span> → ${r.ret >= r.benchRet ? '<span class="green">battu</span>' : '<span class="red">non battu</span>'}`)}
+      ${kv('AUM', `${fmtMoney(r.aum0)} → ${fmtMoney(r.aum1)}`)}
+      ${kv('Souscriptions / rachats', `<span class="green">+${fmtMoney(r.subs)}</span> / <span class="red">−${fmtMoney(r.reds)}</span>`)}
+      ${kv('Frais encaissés / salaires', `${fmtMoney(r.fees)} / ${fmtMoney(r.sal)}`)}
+      ${kv('Drawdown max du trimestre', fmtPct(r.maxDD, 1))}
+      ${r.best ? kv('Meilleure contribution', `${r.best[0]} <span class="${cls(r.best[1])}">${fmtMoney(r.best[1])}</span>`) : ''}
+      ${r.worst ? kv('Pire contribution', `${r.worst[0]} <span class="${cls(r.worst[1])}">${fmtMoney(r.worst[1])}</span>`) : ''}
+      <h4 class="mt">Objectif : ${r.goal}</h4>
+      <div>${r.ok ? `✅ Atteint : +${fmtMoney(r.reward)}, ⭐ +2, 🤝 +2 (série : ${r.streak})` : '❌ Manqué : ⭐ −1, 🤝 −3, série remise à zéro'}</div>
+      ${r.regimes.length ? `<h4 class="mt">Bilans de régime</h4>${r.regimes.map(g => kv(`${g.icon} ${g.name} (${g.weeks} sem.)`, `vous <span class="${cls(g.you)}">${fmtPct(g.you, 1, true)}</span> · Équilibré ${fmtPct(g.ref, 1, true)}`)).join('')}` : ''}
+      ${r.decisions.length ? `<h4 class="mt">Décisions du trimestre</h4>${r.decisions.map(d => `<div class="small">• ${esc(d)}</div>`).join('')}` : ''}
+      <div class="row mt"><button class="btn primary" data-modal="close">Continuer</button></div>`);
+  },
   showVictory() {
     this.showModal(`<div class="icon">🏆</div><h2>Victoire !</h2>
       <p>« ${esc(S.fundName)} » gère <b>${fmtMoney(Portfolio.aum())}</b> avec une réputation de <b>${Math.round(S.reputation)}/100</b> après ${S.week} semaines. Vous êtes une légende de la gestion alternative.</p>
@@ -2979,6 +3531,7 @@ const UI = {
     if (this.chart) { try { this.chart.destroy(); } catch (e) { /* ignore */ } this.chart = null; }
     this.applyDecor();
     this.renderAll();
+    if (!S.events.pending && S.events.queue && S.events.queue.length) Events.trigger(S.events.queue.shift());
     if (S.events.pending) this.showEvent();
     else if (S.status === 'lost' || S.status === 'retired') this.showEnd(S.status === 'retired' ? 'Retraite dorée' : 'Partie terminée', 'Cette partie est terminée.', S.status === 'retired');
   },
@@ -2994,6 +3547,7 @@ const UI = {
       </div>
       <div class="small amber">⚠️ Changer de difficulté en cours de partie modifie la volatilité, les événements et la conformité. Passer en casual ferme levier et positions courtes.</div>
       <h4 class="mt">Options</h4>
+      <label class="row"><input type="checkbox" id="repChk" ${S.showReports ? 'checked' : ''}> Afficher automatiquement le rapport trimestriel</label>
       <label class="row"><input type="checkbox" id="hardChk" ${S.hardMode ? 'checked' : ''}> Hard mode : rétrogradation de palier si l'AUM tombe sous 50 % du seuil</label>
       <div class="row mt"><span>Vitesse de l'avance auto</span><select id="speedSel">${Object.keys(speeds).map(k => `<option value="${k}" ${(this.autoSpeed || 'normal') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
       <h4 class="mt">Partie</h4>
@@ -3003,6 +3557,7 @@ const UI = {
         apply: () => {
           const d = document.querySelector('input[name=sdiff]:checked')?.value;
           S.hardMode = !!this.$('hardChk')?.checked;
+          S.showReports = !!this.$('repChk')?.checked;
           this.autoSpeed = this.$('speedSel')?.value || 'normal';
           this.closeModal();
           if (d && d !== S.difficulty) this.confirm('Changer la difficulté ?', `Passer en ${CONFIG.MODES[d].label} en cours de partie. Continuer ?`, () => Game.setDifficulty(d));
@@ -3041,7 +3596,7 @@ function boot() {
 document.addEventListener('DOMContentLoaded', boot);
 
 /* Accès console / tests automatisés */
-window.HFT = { get S() { return S; }, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
+window.HFT = { get S() { return S; }, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" async onload="UI.onChartLoaded()" onerror="UI.onChartFailed()"></script>
 </body>
