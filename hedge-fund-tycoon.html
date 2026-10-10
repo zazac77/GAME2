@@ -424,7 +424,7 @@ const TRAITS = {
 
 /* Types d'investisseurs (tier = palier de déblocage) */
 const INVESTOR_TYPES = {
-  retail:        { name: 'Particuliers (Retail)', short: 'Retail', icon: '👤', tier: 1, objective: 0.06, tolerance: 55, lockup: 4,   ticket: [150, 1500],   frac: 0.002,  rate: 1.5,  fickle: 1.3, minCompliance: 0 },
+  retail:        { name: 'Particuliers (Retail)', short: 'Retail', icon: '👤', tier: 1, objective: 0.06, tolerance: 55, lockup: 4,   ticket: [250, 2500],   frac: 0.002,  rate: 2.0,  fickle: 1.3, minCompliance: 0 },
   hnwi:          { name: 'HNWI (grandes fortunes)', short: 'HNWI', icon: '💼', tier: 2, objective: 0.08, tolerance: 65, lockup: 13,  ticket: [5e3, 4e4],    frac: 0.008,  rate: 0.25, fickle: 1.0, minCompliance: 0 },
   uhnwi:         { name: 'UHNWI (family offices)', short: 'UHNWI', icon: '💎', tier: 5, objective: 0.10, tolerance: 70, lockup: 26,  ticket: [2.5e5, 3e6],  frac: 0.012,  rate: 0.08, fickle: 0.9, minCompliance: 40 },
   institutional: { name: 'Institutionnels', short: 'Instit.', icon: '🏛️', tier: 7, objective: 0.07, tolerance: 50, lockup: 52,  ticket: [5e6, 5e7],    frac: 0.015,  rate: 0.07, fickle: 0.7, minCompliance: 60 },
@@ -737,11 +737,18 @@ const Market = {
   updatePerception() {
     const m = S.market;
     const q = Team.infoQuality();
-    m.perceived = rng() < 0.45 + 0.55 * q ? m.regime : pick(Object.keys(CONFIG.REGIMES).filter(r => r !== m.regime));
-    m.perceivedConf = 0.45 + 0.55 * q;
+    // Le régime affiché n'est jamais inventé : il est détecté AVEC RETARD.
+    // Chaque semaine, un changement de régime est repéré avec une probabilité
+    // de 40 % (sans équipe) à 100 % (qualité d'information parfaite).
+    const detect = 0.4 + 0.6 * q;
+    if (m.perceived !== m.regime && rng() < detect) { m.perceived = m.regime; m.perceivedSince = S.week; }
+    m.perceivedConf = detect;
+    // Bruit des prévisions persistant (pas de zigzag d'une semaine à l'autre)
+    if (!m.fcNoise) m.fcNoise = {};
     RISKY.forEach(k => {
-      const noise = gauss() * 0.30 * (1 - q) * (0.5 + CONFIG.ASSETS[k].vol);
-      m.forecasts[k] = this.expectedMu(k) + noise;
+      const fresh = gauss() * 0.30 * (1 - q) * (0.5 + CONFIG.ASSETS[k].vol);
+      m.fcNoise[k] = 0.85 * (m.fcNoise[k] || 0) + 0.15 * fresh;
+      m.forecasts[k] = this.expectedMu(k) + m.fcNoise[k] * 2.5;
     });
   },
 
@@ -765,7 +772,7 @@ const Market = {
   },
 
   /* Génère un historique de départ (pour les sparklines) */
-  warmup(weeks) { for (let i = 0; i < weeks; i++) this.step(true); this.updatePerception(); }
+  warmup(weeks) { for (let i = 0; i < weeks; i++) this.step(true); S.market.perceived = S.market.regime; S.market.perceivedSince = 0; this.updatePerception(); }
 };
 
 /* =============================================================================
@@ -2309,7 +2316,8 @@ const UI = {
     return `
       <div class="grid g3">
         <div class="card"><h4>Régime de marché (estimé)</h4><div style="font-size:22px;font-weight:700">${R.icon} ${R.name}</div>
-          <div class="small muted">Fiabilité de l'estimation : ${fmtPct(m.perceivedConf || 0.45, 0)} — améliorée par les analystes, quants et la data premium.</div></div>
+          <div class="small muted">Détecté depuis ${Math.max(0, S.week - (m.perceivedSince || 0))} sem. Un changement de régime est repéré avec retard : ${fmtPct(m.perceivedConf || 0.4, 0)} de chances par semaine (analystes, quants, data premium accélèrent la détection).</div>
+          <div class="small mt">${{ bull: '👉 Conseil : Dynamique.', range: '👉 Conseil : Équilibré, ne touchez à rien.', bear: '👉 Conseil : Prudent si ça dure.', crisis: '👉 Conseil : Prudent, coupez le levier.', bubble: '👉 Conseil : profitez-en mais préparez la sortie.' }[m.perceived]} Au palier 1, l'allocation compte peu : ce qui fait grandir le fonds, ce sont les clients (réputation, confiance).</div></div>
         <div class="card"><h4>Qualité d'information</h4><div style="font-size:22px;font-weight:700">${fmtPct(q, 0)}</div>
           <div class="gauge"><div style="width:${q * 100}%;background:var(--blue)"></div></div>
           <div class="small muted mt">Réduit le bruit des prévisions et génère un alpha jusqu'à +2,5 %/an sur les actifs « stock-picking ».</div></div>
