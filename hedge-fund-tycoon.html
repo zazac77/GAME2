@@ -307,6 +307,17 @@ const CONFIG = {
   JUMP_MULT: 2.5,
 
   // --- Difficulté -----------------------------------------------------------
+  // --- Prop firm (palier 1) ----------------------------------------------
+  // Challenge : atteindre +target sans dépasser maxDD de drawdown (et avant
+  // deadline semaines si définie). Compte financé : 80 % des gains versés
+  // toutes les 4 semaines, compte agrandi de 25 % tous les 13 semaines
+  // rentables. Le fonds peut être lancé après gradWeeks semaines financées.
+  PROP: {
+    casual:       { fee: 50, size: 10000, target: 0.06, maxDD: 0.15, deadline: 0,  funded: 50000, gradWeeks: 20 },
+    intermediate: { fee: 80, size: 10000, target: 0.08, maxDD: 0.10, deadline: 39, funded: 50000, gradWeeks: 26 },
+    split: 0.80, payoutEvery: 4, scaleEvery: 13, scaleMult: 1.25, maxSize: 2e6, cooldown: 8
+  },
+
   MODES: {
     casual: {
       label: 'Casual', volMult: 0.8, negDriftMult: 0.7, eventInterval: [5, 8], eventSeverity: 0.6,
@@ -434,7 +445,7 @@ const INVESTOR_TYPES = {
 
 /* Paliers / locaux. bonus : effets chiffrés (voir tierBonus()). */
 const TIERS = [
-  { name: 'Garage', min: 0, local: 'Garage', cap: 2, icon: '🔧', bg: ['#17120d', '#2b2117'], accent: '#d9a066', bonusTxt: '—', bonus: {}, unlocks: 'Actions, obligations, cash' },
+  { name: 'Prop firm', min: 0, local: 'Desk loué chez une prop firm', cap: 2, icon: '🎯', bg: ['#17120d', '#2b2117'], accent: '#d9a066', bonusTxt: '—', bonus: {}, unlocks: 'Challenge prop firm, puis lancement du fonds' },
   { name: 'Coworking', min: 5e4, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI' },
   { name: 'Petit bureau', min: 2.5e5, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales' },
   { name: 'Boutique', min: 1e6, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, RH' },
@@ -568,7 +579,10 @@ function createState(difficulty, fundName, legacy) {
   target.equities = 40; target.bonds = 40;
   return {
     version: CONFIG.VERSION,
-    fundName: fundName || 'Garage Capital',
+    fundName: fundName || 'Phoenix Capital',
+    // Prop firm : phase = idle (challenge à acheter) | challenge | funded | off
+    prop: { phase: 'idle', launched: false, size: 0, equity: 0, peak: 0, startWeek: 0, attempts: 0, passes: 0,
+            fundedWeeks: 0, profitWeeks: 0, sinceScale: 0, payouts: 0, track: [], cooldownUntil: 0, confBonus: 0, confUntil: 0 },
     difficulty,
     hardMode: false,
     week: 0,
@@ -904,10 +918,11 @@ const Portfolio = {
     if (tc < 0) modelRet -= -tc / 100 * CONFIG.BORROW_RATE / 52;
 
     const A1 = this.aum();
-    if (A0 > 0 && A1 <= 0) { this.liquidate(); return; }
+    if (A0 > 0 && A1 <= 0) { S.last.propReturn = modelRet; this.liquidate(); return; }
     if (this.totalShares() > 1e-12) this.syncNavps();
     else f.navps *= 1 + modelRet;
     S.last.fundReturn = A0 > 0 ? A1 / A0 - 1 : modelRet;
+    S.last.propReturn = modelRet;
   },
 
   /* Alpha annuel : qualité d'information, quants, spécialités, stratégies auto */
@@ -1272,7 +1287,7 @@ const Investors = {
     const T = INVESTOR_TYPES[type];
     const inv = {
       id: S.investors.nextId++, type, name: INV_NAMES[type](), shares: amount / S.fund.navps,
-      conf: clamp(50 + rand(-8, 10) + Progression.tierBonus('clientConf') * 30, 0, 100),
+      conf: clamp(50 + rand(-8, 10) + Progression.tierBonus('clientConf') * 30 + (S.week < S.prop.confUntil ? S.prop.confBonus : 0), 0, 100),
       objective: T.objective + rand(-0.01, 0.02), tolerance: T.tolerance + randInt(-10, 10),
       lockupUntil: S.week + T.lockup, joined: S.week, count: 1, invested: amount
     };
@@ -1282,6 +1297,7 @@ const Investors = {
 
   /* Apport du fondateur (cash de la société -> fonds) */
   founderInvest(amount) {
+    if (!S.prop.launched) return UI.toast('Lancez d’abord votre fonds (réussissez la prop firm).', 'warn');
     amount = Math.min(amount, S.cash);
     if (amount <= 0) return;
     S.cash -= amount;
@@ -1345,6 +1361,7 @@ const Investors = {
 
   /* Étape 6 du tick : confiance, apports, retraits, nouveaux clients */
   step() {
+    if (!S.prop.launched) { S.last.subs = 0; S.last.reds = 0; return; }
     const f = S.fund;
     const navps = f.navps;
     const A = Portfolio.aum();
@@ -1437,6 +1454,99 @@ const Investors = {
         group.splice(idx, 0, c);
       }
     }
+  }
+};
+
+/* =============================================================================
+   7b. PROP FIRM — challenge, compte financé, lancement du fonds (palier 1)
+   -----------------------------------------------------------------------------
+   Le compte prop suit la même allocation cible que le fonds : son rendement
+   hebdomadaire est celui du portefeuille modèle (S.last.fundReturn).
+   ============================================================================= */
+const Prop = {
+  rules() { return CONFIG.PROP[S.difficulty]; },
+  active() { return S.prop.phase === 'challenge' || S.prop.phase === 'funded'; },
+  dd() { const p = S.prop; return p.peak > 0 ? 1 - p.equity / p.peak : 0; },
+  gain() { const p = S.prop; return p.size > 0 ? p.equity / p.size - 1 : 0; },
+  canRetryFree() { return S.cash < this.rules().fee && S.week >= S.prop.cooldownUntil; },
+  /* Track record annualisé sur les semaines financées */
+  trackAnnual() {
+    const t = S.prop.track; if (t.length < 4) return 0;
+    const g = t.reduce((a, r) => a * (1 + r), 1);
+    return Math.pow(g, 52 / t.length) - 1;
+  },
+  buyChallenge() {
+    const p = S.prop, r = this.rules();
+    if (this.active()) return;
+    if (S.cash >= r.fee) S.cash -= r.fee;
+    else if (!this.canRetryFree()) return UI.toast(`Cash insuffisant : challenge gratuit disponible dans ${p.cooldownUntil - S.week} sem.`, 'warn');
+    p.phase = 'challenge'; p.size = r.size; p.equity = r.size; p.peak = r.size; p.startWeek = S.week; p.attempts++;
+    Game.log(`🎯 Challenge prop firm n°${p.attempts} : objectif ${fmtPct(r.target, 0, true)} sans drawdown de ${fmtPct(r.maxDD, 0)}${r.deadline ? ' en ' + r.deadline + ' semaines' : ''}.`, 'info');
+    UI.renderAll();
+  },
+  quit() {
+    if (S.prop.phase !== 'funded') return;
+    S.prop.phase = 'off';
+    Game.log('Vous quittez la prop firm pour vous consacrer à votre fonds.', 'info');
+    UI.renderAll();
+  },
+  fail(why) {
+    const p = S.prop;
+    const wasFunded = p.phase === 'funded';
+    p.phase = p.launched ? 'off' : 'idle';
+    p.cooldownUntil = S.week + CONFIG.PROP.cooldown;
+    if (!p.launched && wasFunded) p.track = [];
+    Game.log(`❌ ${wasFunded ? 'Compte financé perdu' : 'Challenge échoué'} : ${why}.`, 'bad');
+    UI.toast(`❌ ${wasFunded ? 'Compte financé perdu' : 'Challenge échoué'}`, 'bad');
+  },
+  /* Étape 2b du tick */
+  step() {
+    const p = S.prop, r = this.rules();
+    if (!this.active()) return;
+    const ret = S.last.propReturn;
+    p.equity *= 1 + ret;
+    p.peak = Math.max(p.peak, p.equity);
+    if (p.phase === 'challenge') {
+      if (this.gain() >= r.target) {
+        p.passes++;
+        p.phase = 'funded'; p.size = r.funded; p.equity = r.funded; p.peak = r.funded; p.startWeek = S.week; p.sinceScale = 0;
+        Game.log(`✅ Challenge réussi ! La prop firm vous confie un compte de ${fmtMoney(r.funded)} (vous gardez ${fmtPct(CONFIG.PROP.split, 0)} des gains).`, 'tier');
+        UI.toast('✅ Challenge réussi : compte financé !', 'good');
+      } else if (this.dd() >= r.maxDD) this.fail(`drawdown de ${fmtPct(this.dd(), 1)}`);
+      else if (r.deadline && S.week - p.startWeek >= r.deadline) this.fail(`objectif non atteint en ${r.deadline} semaines`);
+      return;
+    }
+    // Compte financé
+    p.fundedWeeks++;
+    p.track.push(ret);
+    if (p.track.length > 104) p.track.shift();
+    if (this.dd() >= r.maxDD) return this.fail(`drawdown de ${fmtPct(this.dd(), 1)}`);
+    if (S.week - p.startWeek > 0 && (S.week - p.startWeek) % CONFIG.PROP.payoutEvery === 0 && p.equity > p.size) {
+      const pay = (p.equity - p.size) * CONFIG.PROP.split;
+      S.cash += pay; p.payouts += pay; p.profitWeeks += CONFIG.PROP.payoutEvery; p.sinceScale += CONFIG.PROP.payoutEvery;
+      p.equity = p.size; p.peak = p.size;
+      Game.log(`💸 Versement prop firm : ${fmtMoney(pay)}.`, 'good');
+      if (p.sinceScale >= CONFIG.PROP.scaleEvery) {
+        p.sinceScale = 0; p.size = Math.min(CONFIG.PROP.maxSize, p.size * CONFIG.PROP.scaleMult); p.equity = p.size; p.peak = p.size;
+        Game.log(`📈 Scaling : votre compte financé passe à ${fmtMoney(p.size)}.`, 'good');
+      }
+    }
+    if (!p.launched && p.fundedWeeks >= r.gradWeeks && this.trackAnnual() > 0 && !S.events.pending) Events.trigger('fund_launch');
+  },
+  launch(keep) {
+    const p = S.prop;
+    const ann = this.trackAnnual();
+    p.launched = true;
+    if (!keep) p.phase = 'off';
+    S.reputation = Math.max(S.reputation, clamp(15 + ann * 60, 15, 40) + (keep ? 0 : 5));
+    p.confBonus = clamp(ann * 40, 0, 15); p.confUntil = S.week + 52;
+    const seed = clamp(4000 + ann * 40000, 4000, 30000);
+    for (let i = 0; i < 3; i++) Investors.newInvestor('retail', seed / 3).name += ' (client fondateur)';
+    Portfolio.deposit(seed);
+    Portfolio.syncNavps();
+    S.fund.hwm = S.fund.navps; S.fund.peakNavps = S.fund.navps;
+    Game.log(`🚀 Lancement de « ${S.fundName} » : track record ${fmtPct(ann, 1, true)}/an, ${fmtMoney(seed)} de premiers clients.`, 'tier');
+    UI.toast(`🚀 ${S.fundName} est lancé !`, 'tier');
   }
 };
 
@@ -1784,6 +1894,17 @@ const EVENTS = [
       { label: 'Se battre en justice', hint: p => `50 % : relaxe (⭐ −3) · 50 % : amende ${fmtMoney(p.fine)}, ⭐ −15`, apply(p) { if (rng() < 0.5) { addRep(-3); Game.log('Relaxe obtenue au tribunal.', 'good'); } else { payCash(p.fine); addRep(-15); Game.log('Condamnation : lourde amende.', 'bad'); } S.events.flags.insider = false; } },
       { label: 'Faire porter le chapeau à un employé', hint: () => 'Licenciement du meilleur trader/analyste · 🛡️ −10 · ⭐ −4', apply() { const e = S.team.employees.slice().sort((a, b) => Team.power(b) - Team.power(a))[0]; if (e) Team.fire(e.id, true); addCompliance(-10); addRep(-4); S.events.flags.insider = rng() < 0.3; } }
     ]
+  },
+  {
+    // Déclenché par la prop firm (jamais tiré au hasard)
+    id: 'fund_launch', icon: '🚀', title: 'Vos résultats circulent…',
+    cond: () => false, cooldown: 0, weight: () => 0,
+    prepare() { return { ann: Prop.trackAnnual(), weeks: S.prop.fundedWeeks, payouts: S.prop.payouts }; },
+    text: p => `Après ${p.weeks} semaines sur compte financé (track record ${fmtPct(p.ann, 1, true)}/an, ${fmtMoney(p.payouts)} de gains encaissés), des investisseurs veulent vous confier leur argent. C'est le moment de lancer « ${esc(S.fundName)} ».`,
+    options: [
+      { label: 'Lancer le fonds et garder le compte prop', hint: () => 'Le compte financé continue de verser des gains (même allocation que le fonds)', apply() { Prop.launch(true); } },
+      { label: 'Lancer le fonds et quitter la prop firm', hint: () => '⭐ +5 de réputation de départ (gérant indépendant), plus de versements prop', apply() { Prop.launch(false); } }
+    ]
   }
 ];
 
@@ -1957,9 +2078,9 @@ const Game = {
     Team.refreshCandidates(true);
     S.risk = Risk.targetScore();
     this.recordHistory();
-    this.log(`Création de « ${S.fundName} » dans un garage avec ${fmtMoney(S.cash)} de capital (mode ${CONFIG.MODES[difficulty].label}).`, 'tier');
+    this.log(`Vous louez un desk chez une prop firm avec ${fmtMoney(S.cash)} en poche (mode ${CONFIG.MODES[difficulty].label}). Objectif : réussir le challenge, puis lancer « ${S.fundName} ».`, 'tier');
     if (S.legacyBonus > 0) this.log(`Bonus legacy : +${fmtPct(S.legacyBonus, 0)} de capital de départ.`, 'good');
-    this.log('Conseil : investissez une partie de votre cash dans le fonds (onglet Portefeuille) pour rassurer vos premiers clients.', 'info');
+    this.log('Première étape : achetez un challenge prop firm dans l’onglet Portefeuille.', 'info');
   },
 
   /* Le tick hebdomadaire, dans l'ordre imposé par le game design */
@@ -1971,6 +2092,7 @@ const Game = {
     S.last.txFees = 0;
     Market.step();                 // 1. prix (régime + volatilité + corrélations)
     Portfolio.applyReturns();      // 2. revenus du portefeuille
+    Prop.step();                   // 2b. compte prop firm (challenge / financé)
     Portfolio.weeklyTrading();     // 3. frais de transaction (stop-loss, rééquilibrage)
     Team.paySalaries();            // 4. salaires
     Investors.collectFees();       // 5. frais de gestion + performance
@@ -2071,6 +2193,7 @@ const Save = {
       // Migration douce : on complète avec un état neuf pour les champs manquants
       const fresh = createState(data.difficulty || 'casual', data.fundName, Legacy.get());
       S = deepMerge(fresh, data);
+      if (!data.prop) { S.prop.launched = true; S.prop.phase = 'off'; } // sauvegarde antérieure à la prop firm
       RNG.seed = (S.seed >>> 0) || RNG.seed;
       Team.invalidate();
       UI.toast('📂 Partie chargée.', 'good');
@@ -2182,6 +2305,8 @@ const UI = {
         this.renderAll(); break;
       }
       case 'auto-rebal': S.fund.autoRebalance = !S.fund.autoRebalance; this.renderTab(); break;
+      case 'prop-buy': Prop.buyChallenge(); break;
+      case 'prop-quit': this.confirm('Quitter la prop firm ?', 'Vous ne toucherez plus de versements.', () => Prop.quit()); break;
       case 'founder-in': Investors.founderInvest(S.cash * Number(el.dataset.f)); break;
       case 'founder-out': {
         const f = Investors.founder();
@@ -2236,7 +2361,12 @@ const UI = {
     // Palier
     const T = TIERS[S.tier - 1], N = TIERS[S.tier];
     let prog = 1, nextTxt = 'Palier maximal atteint — mode endless';
-    if (N) {
+    if (!S.prop.launched) {
+      const p = S.prop, r = Prop.rules();
+      if (p.phase === 'challenge') { prog = clamp(Prop.gain() / r.target, 0, 1); nextTxt = `🎯 Challenge : ${fmtPct(Prop.gain(), 1, true)} / ${fmtPct(r.target, 0, true)} · drawdown ${fmtPct(Prop.dd(), 1)} / ${fmtPct(r.maxDD, 0)}${r.deadline ? ' · sem. ' + (S.week - p.startWeek) + '/' + r.deadline : ''}`; }
+      else if (p.phase === 'funded') { prog = clamp(p.fundedWeeks / r.gradWeeks, 0, 1); nextTxt = `💼 Compte financé ${fmtMoney(p.size)} · ${p.fundedWeeks}/${r.gradWeeks} sem. avant le lancement du fonds · track ${fmtPct(Prop.trackAnnual(), 1, true)}/an`; }
+      else { prog = 0; nextTxt = '🎯 Achetez un challenge prop firm (onglet Portefeuille) pour commencer'; }
+    } else if (N) {
       prog = T.min > 0 ? clamp(Math.log(Math.max(A, T.min) / T.min) / Math.log(N.min / T.min), 0, 1) : clamp(A / N.min, 0, 1);
       nextTxt = `Prochain : ${N.icon} ${N.name} à ${fmtMoney(N.min)} d'AUM`;
     }
@@ -2250,6 +2380,7 @@ const UI = {
     const conf = Investors.globalConfidence();
     const items = [
       { l: 'Cash société', v: fmtMoney(S.cash), s: `<span class="${cls(S.last.cash)}">${S.last.cash >= 0 ? '+' : ''}${fmtMoney(S.last.cash)}/sem</span>`, c: S.cash < 0 ? 'red' : '' },
+      !S.prop.launched ? { l: 'Compte prop', v: Prop.active() ? fmtMoney(S.prop.equity) : '—', s: `<span class="muted">${{ idle: 'aucun compte', challenge: 'challenge', funded: 'financé', off: '' }[S.prop.phase]}</span>` } :
       { l: 'AUM', v: fmtMoney(A), s: `<span class="${cls(S.last.subs - S.last.reds)}">flux ${S.last.subs - S.last.reds >= 0 ? '+' : ''}${fmtMoney(S.last.subs - S.last.reds)}</span>` },
       { l: 'NAV / part', v: fmtNum(S.fund.navps, 2), s: `<span class="${cls(S.last.fundReturn)}">${fmtPct(S.last.fundReturn, 2, true)} sem.</span>` },
       { l: 'Réputation', v: `${Math.round(S.reputation)}<span class="small muted">/100</span>`, s: gauge(S.reputation, 'var(--accent)') },
@@ -2317,7 +2448,7 @@ const UI = {
       <div class="grid g3">
         <div class="card"><h4>Régime de marché (estimé)</h4><div style="font-size:22px;font-weight:700">${R.icon} ${R.name}</div>
           <div class="small muted">Détecté depuis ${Math.max(0, S.week - (m.perceivedSince || 0))} sem. Un changement de régime est repéré avec retard : ${fmtPct(m.perceivedConf || 0.4, 0)} de chances par semaine (analystes, quants, data premium accélèrent la détection).</div>
-          <div class="small mt">${{ bull: '👉 Conseil : Dynamique.', range: '👉 Conseil : Équilibré, ne touchez à rien.', bear: '👉 Conseil : Prudent si ça dure.', crisis: '👉 Conseil : Prudent, coupez le levier.', bubble: '👉 Conseil : profitez-en mais préparez la sortie.' }[m.perceived]} Au palier 1, l'allocation compte peu : ce qui fait grandir le fonds, ce sont les clients (réputation, confiance).</div></div>
+          <div class="small mt">${{ bull: '👉 Conseil : Dynamique.', range: '👉 Conseil : Équilibré, ne touchez à rien.', bear: '👉 Conseil : Prudent si ça dure.', crisis: '👉 Conseil : Prudent, coupez le levier.', bubble: '👉 Conseil : profitez-en mais préparez la sortie.' }[m.perceived]} ${S.prop.launched ? 'Une fois le fonds lancé, ce sont surtout les clients (réputation, confiance) qui le font grandir.' : 'En prop firm, la régularité prime : un drawdown trop fort élimine.'}</div></div>
         <div class="card"><h4>Qualité d'information</h4><div style="font-size:22px;font-weight:700">${fmtPct(q, 0)}</div>
           <div class="gauge"><div style="width:${q * 100}%;background:var(--blue)"></div></div>
           <div class="small muted mt">Réduit le bruit des prévisions et génère un alpha jusqu'à +2,5 %/an sur les actifs « stock-picking ».</div></div>
@@ -2360,7 +2491,7 @@ const UI = {
       </div>`;
     }).join('');
 
-    return `
+    return `${this.propCard()}
       <div class="grid g2">
         <div class="card">
           <h4>Allocation</h4>
@@ -2402,6 +2533,36 @@ const UI = {
         ${rows}
       </div>`;
   },
+  /* Carte prop firm (en haut de l'onglet Portefeuille) */
+  propCard() {
+    const p = S.prop, r = Prop.rules();
+    if (p.launched && p.phase !== 'funded') return '';
+    let body;
+    if (p.phase === 'idle') {
+      const free = Prop.canRetryFree();
+      body = `<div class="small">Payez le challenge : on vous confie un compte de ${fmtMoney(r.size)}. Gagnez <b>${fmtPct(r.target, 0, true)}</b> sans jamais perdre <b>${fmtPct(r.maxDD, 0)}</b> depuis le plus haut${r.deadline ? `, en <b>${r.deadline} semaines</b> maximum` : ' (pas de limite de temps)'}. Le compte suit l'allocation cible ci-dessous.</div>
+        <div class="row mt"><button class="btn primary" data-act="prop-buy" ${S.cash >= r.fee || free ? '' : 'disabled'}>${free && S.cash < r.fee ? 'Challenge gratuit (période de grâce)' : 'Acheter le challenge (' + fmtMoney(r.fee) + ')'}</button>
+        ${S.cash < r.fee && !free ? `<span class="small muted">Cash insuffisant : challenge gratuit dans ${p.cooldownUntil - S.week} sem.</span>` : ''}
+        <span class="small muted">Tentatives : ${p.attempts}</span></div>`;
+    } else if (p.phase === 'challenge') {
+      body = `<div class="kv"><span class="muted">Compte</span><b class="num">${fmtMoney(p.equity)}</b></div>
+        <div class="kv"><span class="muted">Gain / objectif</span><span class="num ${cls(Prop.gain())}">${fmtPct(Prop.gain(), 1, true)} / ${fmtPct(r.target, 0, true)}</span></div>
+        <div class="bar"><div style="width:${clamp(Prop.gain() / r.target, 0, 1) * 100}%"></div></div>
+        <div class="kv mt"><span class="muted">Drawdown / limite</span><span class="num ${Prop.dd() > r.maxDD * 0.6 ? 'red' : ''}">${fmtPct(Prop.dd(), 1)} / ${fmtPct(r.maxDD, 0)}</span></div>
+        <div class="bar"><div style="width:${clamp(Prop.dd() / r.maxDD, 0, 1) * 100}%;background:var(--red)"></div></div>
+        ${r.deadline ? `<div class="kv mt"><span class="muted">Temps</span><span class="num">${S.week - p.startWeek} / ${r.deadline} sem.</span></div>` : ''}
+        <div class="small muted mt">Astuce : le drawdown est éliminatoire. Une allocation Équilibrée ou Prudente passe plus sûrement qu'un pari Dynamique.</div>`;
+    } else {
+      body = `<div class="kv"><span class="muted">Compte financé</span><b class="num">${fmtMoney(p.equity)}</b> <span class="small muted">(base ${fmtMoney(p.size)})</span></div>
+        <div class="kv"><span class="muted">Gain en cours</span><span class="num ${cls(Prop.gain())}">${fmtPct(Prop.gain(), 1, true)} · versement de ${fmtPct(CONFIG.PROP.split, 0)} toutes les ${CONFIG.PROP.payoutEvery} sem.</span></div>
+        <div class="kv"><span class="muted">Drawdown / limite</span><span class="num ${Prop.dd() > r.maxDD * 0.6 ? 'red' : ''}">${fmtPct(Prop.dd(), 1)} / ${fmtPct(r.maxDD, 0)}</span></div>
+        <div class="kv"><span class="muted">Track record</span><span class="num ${cls(Prop.trackAnnual())}">${fmtPct(Prop.trackAnnual(), 1, true)}/an sur ${p.fundedWeeks} sem.</span></div>
+        <div class="kv"><span class="muted">Gains encaissés</span><span class="num green">${fmtMoney(p.payouts)}</span></div>
+        ${p.launched ? '<div class="row mt"><button class="btn small" data-act="prop-quit">Quitter la prop firm</button></div>' : `<div class="small muted mt">Lancement du fonds possible après ${r.gradWeeks} semaines financées avec un track record positif (${p.fundedWeeks}/${r.gradWeeks}). Un bon track record donne plus de réputation et de premiers clients.</div>`}`;
+    }
+    const title = { idle: '🎯 Prop firm : challenge', challenge: '🎯 Challenge en cours', funded: '💼 Compte financé' }[p.phase];
+    return `<div class="card" style="margin-bottom:10px;border-color:var(--accent)"><h4>${title}</h4>${body}</div>`;
+  },
   updateAllocPreview() {
     const f = S.fund;
     RISKY.forEach(k => { const el = this.$('tgt-' + k); if (el) el.textContent = f.target[k] + ' %'; });
@@ -2428,7 +2589,7 @@ const UI = {
         </div>
         ${pb && pb !== 'Rang maximal' ? `<div class="small muted">Promotion : ${pb}</div>` : ''}
       </div>`;
-    }).join('') || '<div class="muted">Aucun employé pour l’instant. Vous gérez tout seul depuis votre garage.</div>';
+    }).join('') || '<div class="muted">Aucun employé pour l’instant. Vous tradez seul depuis votre desk de prop firm.</div>';
     const full = S.team.employees.length >= cap;
     const cands = S.team.candidates.map(c => {
       const cost = Team.signingCost(c);
@@ -2440,7 +2601,7 @@ const UI = {
         <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(c))}/sem</span></div>
         <button class="btn small primary mt" data-act="hire" data-id="${c.id}" ${full || S.cash < cost ? 'disabled' : ''}>Recruter (prime ${fmtMoney(cost)})</button>
       </div>`;
-    }).join('') || `<div class="muted">${S.tier < 2 ? 'Aucun profil ne veut travailler dans un garage : atteignez le palier 2 (Coworking, 50 k$ d’AUM).' : 'Aucun candidat.'}</div>`;
+    }).join('') || `<div class="muted">${S.tier < 2 ? 'Personne ne rejoint un trader de prop firm : lancez votre fonds et atteignez le palier 2 (Coworking, 50 k$ d’AUM).' : 'Aucun candidat.'}</div>`;
     const roles = Object.entries(ROLES).map(([id, r]) => `<span class="pill ${Team.roleUnlocked(id) ? 'g' : ''}">${r.icon} ${r.titles[0]}${Team.roleUnlocked(id) ? '' : ' 🔒' + r.tier}</span>`).join(' ');
     return `
       <div class="grid g3">
@@ -2695,9 +2856,9 @@ const UI = {
     const l = Legacy.get();
     const lb = Legacy.bonus();
     this.showModal(`<div class="icon">📊</div><h2>Hedge Fund Tycoon</h2>
-      <p>Partez d'un garage avec ${fmtMoney(CONFIG.START_CASH * (1 + lb))} et bâtissez un empire de la gestion alternative. Objectif : <b>1 Md$ d'AUM</b> et une <b>réputation ≥ 90</b>.</p>
+      <p>Commencez comme trader de prop firm avec ${fmtMoney(CONFIG.START_CASH * (1 + lb))} : réussissez le challenge, prouvez vos résultats sur un compte financé, puis lancez votre fonds et bâtissez un empire de la gestion alternative. Objectif : <b>1 Md$ d'AUM</b> et une <b>réputation ≥ 90</b>.</p>
       ${l.runs ? `<p class="small green">Legacy : ${l.runs} partie(s) précédente(s), meilleur AUM ${fmtMoney(l.bestAUM || 0)} → +${fmtPct(lb, 0)} de capital.</p>` : ''}
-      <div class="row"><span class="small muted">Nom du fonds</span><input type="text" id="fundNameIn" maxlength="32" value="Garage Capital" style="flex:1"></div>
+      <div class="row"><span class="small muted">Nom du fonds</span><input type="text" id="fundNameIn" maxlength="32" value="Phoenix Capital" style="flex:1"></div>
       <div class="diffopt">
         <label><input type="radio" name="diff" value="casual" checked><b>Casual</b><div class="small muted">Rééquilibrage auto, préréglages, pas de levier ni de short, événements plus rares et plus doux.</div></label>
         <label><input type="radio" name="diff" value="intermediate"><b>Intermédiaire</b><div class="small muted">Levier, short, stop-loss, devises… événements plus durs, conformité stricte, clients exigeants.</div></label>
@@ -2708,7 +2869,7 @@ const UI = {
         cont: () => { if (Save.load()) { this.closeModal(); this.afterLoad(); } },
         new: () => {
           const d = document.querySelector('input[name=diff]:checked')?.value || 'casual';
-          const name = (this.$('fundNameIn')?.value || '').trim() || 'Garage Capital';
+          const name = (this.$('fundNameIn')?.value || '').trim() || 'Phoenix Capital';
           const go = () => { this.closeModal(); Game.newGame(d, name); this.afterLoad(); Save.save(true); };
           if (hasSave) this.confirm('Nouvelle partie ?', 'La sauvegarde existante sera écrasée.', go); else go();
         }
@@ -2781,7 +2942,7 @@ function boot() {
 document.addEventListener('DOMContentLoaded', boot);
 
 /* Accès console / tests automatisés */
-window.HFT = { get S() { return S; }, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
+window.HFT = { get S() { return S; }, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" async onload="UI.onChartLoaded()" onerror="UI.onChartFailed()"></script>
 </body>
