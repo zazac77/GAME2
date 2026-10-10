@@ -361,11 +361,12 @@ const CONFIG = {
   },
   // Transitions markoviennes hebdomadaires (chaque ligne somme à 1)
   REGIME_TRANSITIONS: {
-    bull:   { bull: 0.974, range: 0.014, bear: 0.006, crisis: 0.002, bubble: 0.004 },
-    range:  { bull: 0.022, range: 0.964, bear: 0.008, crisis: 0.002, bubble: 0.004 },
-    bear:   { bull: 0.010, range: 0.040, bear: 0.940, crisis: 0.010, bubble: 0.000 },
-    crisis: { bull: 0.000, range: 0.040, bear: 0.100, crisis: 0.860, bubble: 0.000 },
-    bubble: { bull: 0.030, range: 0.000, bear: 0.000, crisis: 0.060, bubble: 0.910 }
+    // Durées moyennes : haussier ~16 sem., latéral ~12, baissier ~9, crise ~5, bulle ~8
+    bull:   { bull: 0.940, range: 0.034, bear: 0.015, crisis: 0.002, bubble: 0.009 },
+    range:  { bull: 0.055, range: 0.915, bear: 0.018, crisis: 0.002, bubble: 0.010 },
+    bear:   { bull: 0.030, range: 0.075, bear: 0.885, crisis: 0.010, bubble: 0.000 },
+    crisis: { bull: 0.000, range: 0.060, bear: 0.140, crisis: 0.800, bubble: 0.000 },
+    bubble: { bull: 0.045, range: 0.000, bear: 0.000, crisis: 0.080, bubble: 0.875 }
   },
   // Corrélations « normales » entre actifs risqués
   BASE_CORR: {
@@ -760,9 +761,10 @@ const Market = {
     // Bruit des prévisions persistant (pas de zigzag d'une semaine à l'autre)
     if (!m.fcNoise) m.fcNoise = {};
     RISKY.forEach(k => {
-      const fresh = gauss() * 0.30 * (1 - q) * (0.5 + CONFIG.ASSETS[k].vol);
-      m.fcNoise[k] = 0.85 * (m.fcNoise[k] || 0) + 0.15 * fresh;
-      m.forecasts[k] = this.expectedMu(k) + m.fcNoise[k] * 2.5;
+      // Bruit AR(1) dont l'écart-type stationnaire = Portfolio.forecastError(k)
+      const fresh = gauss() * Portfolio.forecastError(k);
+      m.fcNoise[k] = 0.85 * (m.fcNoise[k] || 0) + 0.527 * fresh;
+      m.forecasts[k] = this.expectedMu(k) + m.fcNoise[k];
     });
   },
 
@@ -1013,13 +1015,37 @@ const Portfolio = {
     return fee;
   },
 
+  /* Recommandation tirée de la prévision des analystes */
+  rating(k) {
+    const fc = S.market.forecasts[k] || 0;
+    if (fc >= 0.08) return { t: '🟢 Surpondérer', c: 'g' };
+    if (fc < 0) return { t: '🔴 Éviter', c: 'r' };
+    return { t: '⚪ Neutre', c: '' };
+  },
+  /* Marge d'erreur de la prévision (dépend de la qualité d'information) */
+  forecastError(k) { return 0.005 + 0.35 * (1 - Team.infoQuality()) * (CONFIG.ASSETS[k].vol + 0.03); },
+  /* Allocation « selon les prévisions » : poids ∝ rendement prévu / variance */
+  forecastTarget() {
+    const sc = {};
+    let tot = 0;
+    for (const k of RISKY) {
+      if (!Market.isUnlocked(k)) continue;
+      const fc = S.market.forecasts[k] || 0, v = Market.effVol(k);
+      if (fc > 0.01) { sc[k] = fc / Math.max(0.0025, v * v); tot += sc[k]; }
+    }
+    const t = {};
+    if (tot > 0) for (const k in sc) t[k] = Math.min(k === 'crypto' ? 15 : 60, Math.round(sc[k] / tot * 90));
+    return t;
+  },
+
   /* Préréglages d'allocation (adaptés aux actifs débloqués) */
   presets() {
     const u = k => Market.isUnlocked(k);
     return {
       prudent:   { label: '🛡️ Prudent',   t: { equities: 20, bonds: 60 } },
       equilibre: { label: '⚖️ Équilibré', t: Object.assign({ equities: 50, bonds: 35 }, u('commodities') ? { commodities: 5, bonds: 30 } : {}) },
-      dynamique: { label: '🚀 Dynamique', t: Object.assign({ equities: 75, bonds: 15 }, u('commodities') ? { equities: 65, commodities: 10 } : {}, u('crypto') ? { equities: 60, crypto: 5 } : {}) }
+      dynamique: { label: '🚀 Dynamique', t: Object.assign({ equities: 75, bonds: 15 }, u('commodities') ? { equities: 65, commodities: 10 } : {}, u('crypto') ? { equities: 60, crypto: 5 } : {}) },
+      prevision: { label: '🔮 Selon les prévisions', t: this.forecastTarget() }
     };
   },
   applyPreset(id) {
@@ -2438,7 +2464,8 @@ const UI = {
         <div class="top"><span class="name">${a.icon} ${a.name}</span>${unlocked ? `<span class="num ${cls(r)}">${fmtPct(r, 2, true)}</span>` : `<span class="pill a">🔒 Palier ${a.tier}</span>`}</div>
         <div class="price num">${fmtNum(m.prices[k], 2)}</div>
         ${this.sparkline(m.hist[k])}
-        <div class="kv small"><span class="muted">Prévision analystes</span><span class="num ${cls(fc)}">${fmtPct(fc, 1, true)}/an</span></div>
+        <div class="kv small"><span class="muted">Rendement prévu</span><span class="num ${cls(fc)}">${fmtPct(fc, 1, true)}/an <span class="muted">±${fmtPct(Portfolio.forecastError(k), 0)}</span></span></div>
+        ${unlocked ? `<div class="kv small"><span class="muted">Recommandation</span><span class="pill ${Portfolio.rating(k).c}">${Portfolio.rating(k).t}</span></div>` : ''}
         <div class="kv small"><span class="muted">Volatilité (régime)</span><span class="num">${fmtPct(Market.effVol(k), 0)}</span></div>
         <div class="kv small"><span class="muted">Liquidité</span><span>${a.liq} · frais ${fmtPct(Portfolio.feeRate(k), 2)}</span></div>
       </div>`;
@@ -2451,7 +2478,7 @@ const UI = {
           <div class="small mt">${{ bull: '👉 Conseil : Dynamique.', range: '👉 Conseil : Équilibré, ne touchez à rien.', bear: '👉 Conseil : Prudent si ça dure.', crisis: '👉 Conseil : Prudent, coupez le levier.', bubble: '👉 Conseil : profitez-en mais préparez la sortie.' }[m.perceived]} ${S.prop.launched ? 'Une fois le fonds lancé, ce sont surtout les clients (réputation, confiance) qui le font grandir.' : 'En prop firm, la régularité prime : un drawdown trop fort élimine.'}</div></div>
         <div class="card"><h4>Qualité d'information</h4><div style="font-size:22px;font-weight:700">${fmtPct(q, 0)}</div>
           <div class="gauge"><div style="width:${q * 100}%;background:var(--blue)"></div></div>
-          <div class="small muted mt">Réduit le bruit des prévisions et génère un alpha jusqu'à +2,5 %/an sur les actifs « stock-picking ».</div></div>
+          <div class="small muted mt">Chaque carte d'actif affiche le <b>rendement prévu</b> pour les semaines à venir (il dépend du régime en cours) et sa marge d'erreur. Plus la qualité d'information est haute, plus la prévision est précise. Usage : renforcez les actifs 🟢, réduisez les 🔴, ou utilisez le préréglage « 🔮 Selon les prévisions » (onglet Portefeuille). La qualité d'information génère aussi un alpha jusqu'à +2,5 %/an.</div></div>
         <div class="card"><h4>Facteurs temporaires</h4><div class="row">${mods}</div>
           <div class="small muted mt">Régimes possibles : 🐂 haussier, ↔️ latéral, 🐻 baissier, 🔥 crise (corrélations ↑, volatilité ↑), 🫧 bulle (les actifs risqués surperforment… puis chutent).</div></div>
       </div>
