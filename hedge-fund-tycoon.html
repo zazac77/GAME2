@@ -279,7 +279,7 @@
 
   <section class="panel chartpanel">
     <div class="chart-head">
-      <h3 style="margin:0">Valeur liquidative (NAV par part) &amp; AUM</h3>
+      <h3 style="margin:0" id="chartTitle">Valeur liquidative (NAV par part) &amp; AUM</h3>
       <div id="chartLegend" class="small muted"></div>
     </div>
     <div class="chartwrap"><canvas id="navChart"></canvas></div>
@@ -1778,6 +1778,11 @@ const Prop = {
     if (!keep) p.phase = 'off';
     S.reputation = Math.max(S.reputation, clamp(15 + ann * 60, 15, 40) + (keep ? 0 : 5));
     p.confBonus = clamp(ann * 40, 0, 15); p.confUntil = S.week + 52;
+    // Nouveau fonds : la part repart à 100 et l'historique (NAV, graphique) démarre au lancement
+    const f = S.fund;
+    f.navps = CONFIG.START_NAVPS; f.hwm = f.navps; f.peakNavps = f.navps; f.navHist = [f.navps]; f.lastPerfFeeWeek = S.week; f.ddAlerted = false;
+    S.history = { week: [S.week], navps: [f.navps], aum: [0], bench: [null] };
+    S.regimeStat = null;
     const seed = clamp(4000 + ann * 40000, 4000, 30000);
     for (let i = 0; i < 3; i++) Investors.newInvestor('retail', seed / 3).name += ' (client fondateur)';
     Portfolio.deposit(seed);
@@ -3265,6 +3270,7 @@ const UI = {
       <div class="tier-progress"><div class="row between small"><span class="muted">${nextTxt}</span><span class="num">${fmtPct(prog, 0)}</span></div><div class="bar"><div style="width:${prog * 100}%"></div></div></div>`;
 
     this.renderGoalBar();
+    this.$('chartTitle').textContent = S.prop.launched ? 'Valeur liquidative du fonds (NAV par part, base 100 au lancement) & AUM' : 'Performance de votre allocation (base 100) — le fonds n’est pas encore lancé';
     this.$('btnSkip').disabled = S.status !== 'playing';
     const gauge = (v, color) => `<div class="gauge"><div style="width:${clamp(v, 0, 100)}%;background:${color}"></div></div>`;
     const colHigh = v => v > 90 ? 'var(--red)' : v > 70 ? 'var(--amber)' : v > 50 ? '#facc15' : 'var(--green)';
@@ -3275,7 +3281,7 @@ const UI = {
       !S.prop.launched ? { l: 'Compte prop', v: Prop.active() ? fmtMoney(S.prop.equity) : '—', s: `<span class="muted">${{ idle: 'aucun compte', challenge: 'challenge', funded: 'financé', off: '' }[S.prop.phase]}</span>` } :
       S.satellites.length ? { l: 'AUM total', v: fmtMoney(Game.totalAUM()), s: `<span class="muted">fonds principal ${fmtMoney(A)}</span>` } :
       { l: 'AUM', v: fmtMoney(A), s: `<span class="${cls(S.last.subs - S.last.reds)}">flux ${S.last.subs - S.last.reds >= 0 ? '+' : ''}${fmtMoney(S.last.subs - S.last.reds)}</span>` },
-      { l: 'NAV / part', v: fmtNum(S.fund.navps, 2), s: `<span class="${cls(S.last.fundReturn)}">${fmtPct(S.last.fundReturn, 2, true)} sem.</span>` },
+      { l: S.prop.launched ? 'NAV / part' : 'Allocation (base 100)', v: fmtNum(S.fund.navps, 2), s: `<span class="${cls(S.last.fundReturn)}">${fmtPct(S.last.fundReturn, 2, true)} sem.</span>` },
       { l: 'Réputation', v: `${Math.round(S.reputation)}<span class="small muted">/100</span>`, s: gauge(S.reputation, 'var(--accent)') },
       { l: 'Risque', v: `${Math.round(S.risk)}<span class="small muted">/100</span>`, s: gauge(S.risk, colHigh(S.risk)), c: S.risk > 90 ? 'red' : S.risk > 70 ? 'amber' : '' },
       { l: 'Conformité', v: `${Math.round(S.compliance)}<span class="small muted">/100</span>`, s: gauge(S.compliance, colLow(S.compliance)), c: S.compliance < 20 ? 'red' : S.compliance < 50 ? 'amber' : '' },
