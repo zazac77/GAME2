@@ -105,6 +105,7 @@
 
   /* Palier */
   .tierbar { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .gl { border-bottom: 1px dotted var(--muted); cursor: help; }
   .goalbar { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; font-size: 13px; padding: 8px 12px; }
   .goalbar > div { min-width: 0; }
   .ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-bottom: 12px; }
@@ -265,8 +266,10 @@
     </div>
     <div class="controls">
       <button id="btnNext" class="btn primary" title="Barre d'espace">▶ Semaine suivante</button>
+      <button id="btnMonth" class="btn" title="Avancer de 4 semaines (s'arrête en cas d'urgence)">⏩ Mois suivant</button>
       <button id="btnSkip" class="btn" title="Avancer jusqu'au prochain fait marquant (événement, régime, rapport, opportunité…)">⏭️ Jusqu'au prochain fait</button>
       <button id="btnAuto" class="btn" title="Avance automatique">⏩ Auto : OFF</button>
+      <button id="btnGloss" class="btn" title="Glossaire">📖</button>
       <button id="btnSave" class="btn" title="Sauvegarder">💾</button>
       <button id="btnLoad" class="btn" title="Charger la sauvegarde">📂</button>
       <button id="btnSettings" class="btn" title="Paramètres">⚙️</button>
@@ -393,6 +396,8 @@ const CONFIG = {
     fx:          { name: 'Devises', short: 'Devises', group: 'alternatifs', icon: '💱', mu: 0.015, vol: 0.08, fee: 0.0003, liq: 'Très liquide', tier: 5, shortable: true, color: '#a78bfa', alphaInfo: false, L: { M: 0.10, R: 0.30 } },
     crypto:      { name: 'Crypto', short: 'Crypto', group: 'alternatifs', icon: '🪙', mu: 0.20, vol: 0.70, fee: 0.0050, liq: 'Faible', tier: 6, shortable: true, color: '#f472b6', alphaInfo: true, L: { M: 0.35, S: 0.80 } },
     derivatives: { name: 'Dérivés (vente de vol.)', short: 'Dérivés', group: 'alternatifs', icon: '🧮', mu: 0.10, vol: 0.22, fee: 0.0030, liq: 'Moyenne', tier: 8, shortable: false, color: '#2dd4bf', alphaInfo: false, L: { M: 0.70, S: 0.20 } },
+    space:       { name: 'Actions spatiales & astéroïdes', short: 'Espace', group: 'alternatifs', icon: '🚀', vol: 0.45, fee: 0.0040, liq: 'Faible', tier: 14, shortable: true, color: '#818cf8', alphaInfo: true, L: { M: 0.5, S: 0.6 },
+                   rmu: { bull: 0.45, range: 0.16, bear: -0.22, crisis: -0.75, bubble: 0.90 }, profile: 'Marchés extraterrestres · ultra-spéculatif' },
     cash:        { name: 'Cash', short: 'Cash', group: 'cash', icon: '💵', mu: 0.0, vol: 0.0, fee: 0, liq: 'Immédiate', tier: 1, shortable: false, color: '#64748b', alphaInfo: false, L: {} }
   },
   ASSET_GROUPS: { actions: '📈 Actions', obligations: '🏛️ Obligations', alternatifs: '🧪 Alternatifs' },
@@ -509,10 +514,10 @@ const TIERS = [
   { name: 'Tour financière', min: 2e9, local: 'Gratte-ciel', cap: 120, icon: '🌃', bg: ['#110c1b', '#2d1f4a'], accent: '#c084fc', bonusTxt: '+35 % gain réputation', bonus: { repGain: 0.35 }, unlocks: 'Fonds de pension' },
   { name: 'Campus mondial', min: 1e10, local: 'Campus mondial', cap: 200, icon: '🌍', bg: ['#0a1811', '#14402a'], accent: '#4ade80', bonusTxt: '+40 % points recherche', bonus: { rp: 0.40 }, unlocks: 'Stratégies auto' },
   { name: 'Gratte-ciel emblématique', min: 5e10, local: 'Tour iconique', cap: 350, icon: '🗼', bg: ['#190e11', '#4a1f2b'], accent: '#fb7185', bonusTxt: '+45 % performance fee', bonus: { perfFee: 0.45 }, unlocks: 'Marchés émergents' },
-  { name: 'QG mondial', min: 2e11, local: 'Quartier général', cap: 600, icon: '🏰', bg: ['#19150a', '#4a3c14'], accent: '#facc15', bonusTxt: '+50 % tous bonus', bonus: { all: 0.5 }, unlocks: 'Licence bancaire (à venir)' },
+  { name: 'QG mondial', min: 2e11, local: 'Quartier général', cap: 600, icon: '🏰', bg: ['#19150a', '#4a3c14'], accent: '#facc15', bonusTxt: '+50 % tous bonus', bonus: { all: 0.5 }, unlocks: 'Licence bancaire (activité de prêt)' },
   { name: 'Île privée', min: 1e12, local: 'Île privée', cap: 1000, icon: '🏝️', bg: ['#06181d', '#0e4250'], accent: '#22d3ee', bonusTxt: '+60 % rétention clients', bonus: { retention: 0.60 }, unlocks: 'Fonds souverains' },
-  { name: 'Station orbitale', min: 5e12, local: 'Station spatiale', cap: 2000, icon: '🛰️', bg: ['#05060f', '#1a1d3a'], accent: '#93c5fd', bonusTxt: '+75 % portée mondiale', bonus: { reach: 0.75 }, unlocks: 'Marchés extraterrestres (à venir)' },
-  { name: 'Multivers quantique', min: 2e13, local: 'Bureau dans toutes les réalités', cap: Infinity, icon: '🌌', bg: ['#0c0516', '#3b0f5c'], accent: '#e879f9', bonusTxt: '+100 % tout, endless', bonus: { everything: 1.0 }, unlocks: 'Prestige, legacy (à venir)' }
+  { name: 'Station orbitale', min: 5e12, local: 'Station spatiale', cap: 2000, icon: '🛰️', bg: ['#05060f', '#1a1d3a'], accent: '#93c5fd', bonusTxt: '+75 % portée mondiale', bonus: { reach: 0.75 }, unlocks: 'Marchés extraterrestres (actions spatiales)' },
+  { name: 'Multivers quantique', min: 2e13, local: 'Bureau dans toutes les réalités', cap: Infinity, icon: '🌌', bg: ['#0c0516', '#3b0f5c'], accent: '#e879f9', bonusTxt: '+100 % tout, endless', bonus: { everything: 1.0 }, unlocks: 'Prestige (nouvelle partie avec bonus permanents)' }
 ];
 
 /* Améliorations : coût cash + points de recherche par niveau */
@@ -683,6 +688,12 @@ function createState(difficulty, fundName, legacy) {
     advice: [],                             // conseils de l'équipe
     satellites: [], nextSatId: 1,           // fonds satellites (palier 7+)
     feeShare: 1,                            // part des frais revenant à la société (cession de capital)
+    calendar: [], nextCalWeek: 3,           // rendez-vous macro annoncés
+    hedges: [], nextHedgeId: 1,             // protections (options de vente)
+    rivals: [],                             // fonds concurrents
+    exclusions: {},                         // secteurs exclus à la demande de clients
+    bank: { capital: 0, lastPnl: 0 },       // activité bancaire (palier 12)
+    prestige: 0,                            // niveaux de prestige hérités
     counters: { cashNegWeeks: 0, bankruptWeeks: 0, lowComplianceWeeks: 0, marginCalls: 0 },
     last: { cash: 0, aum: 0, subs: 0, reds: 0, mgmt: 0, perf: 0, salaries: 0, txFees: 0, fundReturn: 0, rpGain: 0, fines: 0 },
     stats: { peakAUM: 0, totalFees: 0, crises: 0, startWeek: 0 },
@@ -874,6 +885,11 @@ const Market = {
   /* recover : les baisses liées aux événements se résorbent à 80 % en 13 semaines
      (sinon, les événements à répétition détruiraient de la valeur à long terme) */
   shock(map, recover = true) {
+    // Le compte prop et la NAV « modèle » (fonds non lancé) suivent l'allocation cible
+    let modelImpact = 0;
+    for (const k in map) modelImpact += (S.fund.target[k] || 0) / 100 * map[k];
+    if (Prop.active()) S.prop.equity *= 1 + modelImpact;
+    if (Portfolio.totalShares() <= 1e-12) S.fund.navps *= 1 + modelImpact;
     for (const k in map) {
       const pct = map[k];
       if (recover && pct < 0) this.addModifier(k, -pct * 0.8 * 52 / 13, 13);
@@ -901,7 +917,7 @@ const Portfolio = {
   /* Valeur liquide (cash + positions) ; l'AUM ajoute les opportunités en cours */
   liquid() { let v = S.fund.cash; for (const k of RISKY) v += S.fund.positions[k]; return v; },
   specialsValue() { return (S.fund.specials || []).reduce((a, x) => a + x.amount, 0); },
-  aum() { return this.liquid() + this.specialsValue(); },
+  aum() { return this.liquid() + this.specialsValue() + Hedges.value(); },
   totalShares() { let s = 0; for (const inv of S.investors.list) s += inv.shares; return s; },
   gross() { const A = this.liquid(); if (A <= 0) return 0; let g = 0; for (const k of RISKY) g += Math.abs(S.fund.positions[k]); return g / A; },
   weights() {
@@ -930,7 +946,7 @@ const Portfolio = {
     f.leverage = clamp(f.leverage, 1, this.maxLeverage());
     if (![1, 2, 5].includes(f.leverage)) f.leverage = 1;
     for (const k of RISKY) {
-      if (!Market.isUnlocked(k)) { f.target[k] = 0; continue; }
+      if (!Market.isUnlocked(k) || S.exclusions[k]) { f.target[k] = 0; continue; }
       f.target[k] = clamp(Math.round(f.target[k]), this.minWeight(k), f.leverage * 100);
     }
     const g = this.targetGross(), cap = f.leverage * 100;
@@ -1473,6 +1489,18 @@ const Investors = {
   capital(inv) { return inv.shares * S.fund.navps; },
   clients() { return S.investors.list.filter(i => i.type !== 'founder'); },
   founder() { return S.investors.list.find(i => i.type === 'founder'); },
+  /* Les 5 plus gros clients individuels (hors cohortes, HNWI et au-delà) */
+  bigClients() { return this.clients().filter(i => i.count === 1 && i.type !== 'retail' && i.shares > 0).sort((a, b) => b.shares - a.shares).slice(0, 5); },
+  clientConf(id, d) { const i = S.investors.list.find(x => x.id === id); if (i) i.conf = clamp(i.conf + d, 0, 100); },
+  /* Retenir un client sous préavis : geste commercial de 1 % de son capital */
+  retain(id) {
+    const i = S.investors.list.find(x => x.id === id); if (!i || !i.notice) return;
+    const cost = this.capital(i) * 0.01;
+    if (S.cash < cost) return UI.toast('Cash insuffisant pour ce geste commercial.', 'bad');
+    S.cash -= cost; i.notice = null; i.conf = clamp(i.conf + 25, 0, 100);
+    Game.log(`🤝 ${i.name} accepte de rester (geste commercial ${fmtMoney(cost)}).`, 'good');
+    UI.renderAll();
+  },
 
   /* Confiance globale = moyenne pondérée par le capital */
   globalConfidence() {
@@ -1505,7 +1533,7 @@ const Investors = {
     const perfF = this.perfFactor();
     const salesF = 1 + Team.effects().inflow + Progression.upg('crm') * 0.12 + Progression.tierBonus('reach');
     const complF = S.compliance < 50 ? 0.6 : 1;
-    return repF * confF * perfF * salesF * complF * CONFIG.MODES[S.difficulty].investorDemand;
+    return repF * confF * perfF * salesF * complF * CONFIG.MODES[S.difficulty].investorDemand * (1 + 0.1 * Math.min(3, S.prestige || 0));
   },
   perfFactor() { return clamp(1 + (this.perfAnnual(26) - 0.06) * 3, 0.5, 1.6); },
   /* Saturation : plus le fonds est gros, plus il est difficile de croître en % */
@@ -1599,7 +1627,7 @@ const Investors = {
     const f = S.fund;
     const navps = f.navps;
     const A = Portfolio.aum();
-    const att = this.attractiveness();
+    const att = this.attractiveness() * Rivals.attractMult();
     const perf = this.perfAnnual(26);
     const perfF = this.perfFactor();
     const sat = this.saturation(A);
@@ -1621,6 +1649,19 @@ const Investors = {
       inv.conf = clamp(inv.conf + d + gauss() * 0.8, 0, 100);
 
       const cap = inv.shares * navps;
+      // Préavis de retrait (gros clients) : départ total dans 4 semaines sauf si on le retient
+      if (inv.notice && S.week >= inv.notice) {
+        reds += cap; inv.shares = 0; inv.notice = null;
+        Game.log(`🚪 ${inv.name} retire l'intégralité de ses fonds (${fmtMoney(cap)}).`, 'bad');
+        continue;
+      }
+      if (S.week >= inv.lockupUntil && !inv.notice && inv.conf < 15 && cap > A * 0.01) {
+        inv.notice = S.week + 4;
+        Game.log(`⚠️ ${inv.name} envoie un préavis de retrait total (${fmtMoney(cap)}) dans 4 semaines. Onglet Investisseurs pour tenter de le retenir.`, 'warn');
+        UI.toast(`⚠️ Préavis de retrait : ${inv.name}`, 'warn');
+        continue;
+      }
+      if (inv.notice) continue;
       if (S.week >= inv.lockupUntil) {
         let fr = 0;
         if (inv.conf < 15) fr = 1;
@@ -1717,7 +1758,7 @@ const Prop = {
     if (this.active()) return;
     if (S.cash >= r.fee) S.cash -= r.fee;
     else if (!this.canRetryFree()) return UI.toast(`Cash insuffisant : challenge gratuit disponible dans ${p.cooldownUntil - S.week} sem.`, 'warn');
-    p.ddAdj = 0;
+    p.ddAdj = 0; p.lastW = null; p.fees = 0;
     p.phase = 'challenge'; p.size = r.size; p.equity = r.size; p.peak = r.size; p.startWeek = S.week; p.attempts++;
     Game.log(`🎯 Challenge prop firm n°${p.attempts} : objectif ${fmtPct(r.target, 0, true)} sans drawdown de ${fmtPct(r.maxDD, 0)}${r.deadline ? ' en ' + r.deadline + ' semaines' : ''}.`, 'info');
     UI.renderAll();
@@ -1743,6 +1784,13 @@ const Prop = {
     if (!this.active()) return;
     const ret = S.last.propReturn;
     p.equity *= 1 + ret;
+    // Frais de transaction : changer d'allocation coûte comme dans le fonds
+    const tw = Object.fromEntries(RISKY.map(k => [k, (S.fund.target[k] || 0) / 100]));
+    let fee = 0;
+    if (p.lastW) for (const k of RISKY) fee += Math.abs(tw[k] - (p.lastW[k] || 0)) * Portfolio.feeRate(k);
+    p.lastW = tw;
+    p.lastFee = fee * p.equity; p.fees = (p.fees || 0) + p.lastFee;
+    p.equity -= p.lastFee;
     p.peak = Math.max(p.peak, p.equity);
     if (p.phase === 'challenge') {
       if (this.gain() >= r.target) {
@@ -1830,6 +1878,7 @@ const Risk = {
     if (S.cash < 0) r += 12;
     r -= Team.effects().riskPts;
     r += S.riskShock;
+    r -= Hedges.riskRelief();
     return clamp(r, 0, 100);
   },
   complianceTarget() {
@@ -2169,6 +2218,62 @@ const EVENTS = [
       { label: 'Faire porter le chapeau à un employé', hint: () => 'Licenciement du meilleur trader/analyste · 🛡️ −10 · ⭐ −4', apply() { const e = S.team.employees.slice().sort((a, b) => Team.power(b) - Team.power(a))[0]; if (e) Team.fire(e.id, true); addCompliance(-10); addRep(-4); S.events.flags.insider = rng() < 0.3; } }
     ]
   },
+  /* ---------- Concurrents & clients ---------- */
+  {
+    id: 'rival_collapse', icon: '📉', title: 'Un concurrent en difficulté',
+    cond: s => s.tier >= 3 && s.rivals.length > 0, cooldown: 60, weight: () => 0.6,
+    prepare() { const t = Rivals.table().filter(r => !r.me); const w = t[t.length - 1]; return { name: w.name, perf: w.perf, amt: Portfolio.aum() * 0.06, cost: 20 * U() }; },
+    text: p => `${p.name} (${fmtPct(p.perf, 1, true)} sur un an) ferme ses portes. Ses clients cherchent un nouveau gérant : environ ${fmtMoney(p.amt)} à prendre.`,
+    options: [
+      { label: 'Racheter sa clientèle', hint: p => `💰 −${fmtMoney(p.cost)} · AUM +${fmtMoney(p.amt)} (clients exigeants)`, apply(p) { payCash(p.cost); const inv = Investors.newInvestor('hnwi', p.amt); inv.name = 'Ex-clients ' + p.name; inv.conf = 48; Portfolio.deposit(p.amt); Portfolio.syncNavps(); } },
+      { label: 'Recruter son meilleur gérant', hint: () => 'Nouveau candidat de haut niveau · ⭐ +1', apply() { const c = Team.makeCandidate(); if (c) { c.level = Math.min(9, c.level + 3); S.team.candidates.unshift(c); } addRep(1); } },
+      { label: 'Rester à l’écart', hint: () => '⭐ +1 (vous ne profitez pas du malheur des autres)', apply() { addRep(1); } }
+    ]
+  },
+  {
+    id: 'client_report', icon: '📑', title: 'Un grand client exige un reporting sur mesure',
+    cond: s => Investors.bigClients().length > 0, cooldown: 25, weight: () => 1,
+    prepare() { const c = pick(Investors.bigClients()); return { id: c.id, name: c.name, cap: Investors.capital(c), cost: 6 * U() }; },
+    text: p => `${p.name} (${fmtMoney(p.cap)}) souhaite un reporting hebdomadaire détaillé, ligne par ligne.`,
+    options: [
+      { label: 'Accepter', hint: p => `💰 −${fmtMoney(p.cost)} · confiance du client +15`, apply(p) { payCash(p.cost); Investors.clientConf(p.id, 15); } },
+      { label: 'Proposer un reporting mensuel', hint: () => 'Confiance du client +5', apply(p) { Investors.clientConf(p.id, 5); } },
+      { label: 'Refuser', hint: () => 'Confiance du client −15', apply(p) { Investors.clientConf(p.id, -15); } }
+    ]
+  },
+  {
+    id: 'client_exclusion', icon: '🚫', title: "Un grand client demande l'exclusion d'un secteur",
+    cond: s => Investors.bigClients().length > 0 && ['energy', 'crypto'].some(k => Market.isUnlocked(k) && !s.exclusions[k]), cooldown: 60, weight: () => 0.6,
+    prepare() { const c = pick(Investors.bigClients()); const k = pick(['energy', 'crypto'].filter(x => Market.isUnlocked(x) && !S.exclusions[x])); return { id: c.id, name: c.name, k, cap: Investors.capital(c), cost: 10 * U() }; },
+    text: p => `${p.name} (${fmtMoney(p.cap)}) veut que le fonds n'investisse plus du tout dans : ${CONFIG.ASSETS[p.k].name} (critères ESG).`,
+    options: [
+      { label: 'Accepter l’exclusion', hint: p => `${CONFIG.ASSETS[p.k].name} interdit définitivement · confiance du client +20 · ⭐ +2`, apply(p) { S.exclusions[p.k] = true; Portfolio.normalizeTarget(); Portfolio.rebalance(); Investors.clientConf(p.id, 20); addRep(2); } },
+      { label: 'Refuser poliment', hint: () => 'Le client retire 50 % de ses fonds', apply(p) { Events.redeem(p.id, 0.5); } },
+      { label: 'Proposer un compte dédié', hint: p => `💰 −${fmtMoney(p.cost)} (frais de structuration) · confiance du client +10`, apply(p) { payCash(p.cost); Investors.clientConf(p.id, 10); } }
+    ]
+  },
+  {
+    id: 'client_fee', icon: '💸', title: 'Un grand client négocie ses frais',
+    cond: s => Investors.bigClients().length > 0, cooldown: 40, weight: () => 0.7,
+    prepare() { const c = pick(Investors.bigClients()); return { id: c.id, name: c.name, rebate: Investors.capital(c) * 0.01 }; },
+    text: p => `${p.name} menace de partir si vous ne lui consentez pas une remise sur les frais.`,
+    options: [
+      { label: 'Accorder une remise', hint: p => `💰 −${fmtMoney(p.rebate)} · confiance du client +15`, apply(p) { payCash(p.rebate); Investors.clientConf(p.id, 15); } },
+      { label: 'Tenir bon', hint: () => '50 % : le client reste (confiance −5) · 50 % : il retire tout', apply(p) { if (rng() < 0.5) Investors.clientConf(p.id, -5); else Events.redeem(p.id, 1); } },
+      { label: 'Proposer une part variable', hint: () => 'Carried interest +2 % · confiance du client +8', apply(p) { S.fund.carry = Math.min(0.3, S.fund.carry + 0.02); Investors.clientConf(p.id, 8); } }
+    ]
+  },
+  {
+    id: 'asteroid', icon: '☄️', title: "Découverte d'un astéroïde de platine",
+    cond: s => Market.isUnlocked('space'), cooldown: 40, weight: () => 0.8,
+    prepare() { const up = rng() < 0.6; Market.shock({ space: up ? 0.35 : -0.25 }, false); return { up }; },
+    text: p => p.up ? `Une sonde confirme un astéroïde riche en platine : les actions spatiales s'envolent (+35 %).` : `Une fusée de minage explose au décollage : les actions spatiales plongent (−25 %).`,
+    options: [
+      { label: 'Renforcer les actions spatiales', hint: () => '+5 % d’exposition · risque +6', apply() { Portfolio.shiftInto('space', 0.05); riskShock(6); } },
+      { label: 'Alléger', hint: () => 'Moitié vendue', apply() { sellAsset('space', 0.5); } },
+      { label: 'Ne rien faire', hint: () => '🔬 +3', apply() { S.rp += 3; } }
+    ]
+  },
   /* ---------- Événements sectoriels ---------- */
   {
     id: 'tech_antitrust', icon: '⚖️', title: 'Offensive antitrust contre la tech',
@@ -2486,6 +2591,7 @@ const Quarter = {
     Game.log(`📄 Rapport trimestriel n°${S.quarterN} : ${fmtPct(L.ret, 1, true)} (indice ${fmtPct(L.benchRet, 1, true)}). Objectif « ${g.text(S.goal.p)} » ${ok ? 'atteint ✅' : 'manqué ❌'}.`, ok ? 'good' : 'warn');
     this.start();
     if (S.showReports && !S.events.pending && !UI.batch) UI.showReport();
+    else if (UI.batch) { /* affiché à la fin de l'avance rapide */ }
     else UI.toast(`📄 Rapport trimestriel : objectif ${ok ? 'atteint ✅' : 'manqué ❌'}`, ok ? 'good' : 'warn');
   }
 };
@@ -2766,6 +2872,137 @@ const Tutorial = {
   }
 };
 
+/* --- Calendrier macro : rendez-vous annoncés à l'avance --- */
+const CAL_TYPES = [
+  { id: 'cb', icon: '🏦', name: 'Réunion de la banque centrale', tier: 1, w: 3, sc: [
+    { p: 0.30, label: 'Hausse des taux', x: { R: 0.04, M: -0.012 } }, { p: 0.45, label: 'Statu quo', x: { M: 0.002 } }, { p: 0.25, label: 'Baisse des taux', x: { R: -0.048, M: 0.015 } }] },
+  { id: 'cpi', icon: '🌡️', name: "Publication de l'inflation", tier: 1, w: 3, sc: [
+    { p: 0.30, label: 'Inflation plus forte que prévu', x: { R: 0.03, O: 0.03, M: -0.01 } }, { p: 0.45, label: 'Conforme aux attentes', x: {} }, { p: 0.25, label: 'Inflation en recul', x: { R: -0.036, M: 0.012 } }] },
+  { id: 'earn', icon: '📊', name: 'Saison des résultats', tier: 1, w: 2, sc: [
+    { p: 0.45, label: 'Bons résultats', x: { M: 0.025 } }, { p: 0.35, label: 'Résultats mitigés', x: { M: -0.004 } }, { p: 0.20, label: 'Mauvaises surprises', x: { M: -0.04 } }] },
+  { id: 'opec', icon: '🛢️', name: "Réunion de l'OPEP", tier: 2, w: 1.5, sc: [
+    { p: 0.35, label: 'Baisse de production', x: { O: 0.08 } }, { p: 0.40, label: 'Statu quo', x: {} }, { p: 0.25, label: 'Hausse de production', x: { O: -0.07 } }] },
+  { id: 'vote', icon: '🗳️', name: 'Élection majeure', tier: 3, w: 0.6, sc: [
+    { p: 0.65, label: 'Continuité', x: { M: 0.012 } }, { p: 0.35, label: 'Surprise politique', x: { M: -0.035, S: -0.03 } }] }
+];
+const Calendar = {
+  /* Probabilités affichées : bruitées selon la qualité d'information */
+  shown(ev) { const q = Team.infoQuality(); const raw = ev.sc.map((sc, i) => Math.max(0.03, sc.p + (ev.noise[i] || 0) * 0.25 * (1 - q))); const t = raw.reduce((a, b) => a + b, 0); return raw.map(v => v / t); },
+  schedule() {
+    const T = pick(CAL_TYPES.filter(t => S.tier >= t.tier));
+    const ev = { id: S.week * 10 + randInt(0, 9), type: T.id, icon: T.icon, name: T.name, week: S.week + randInt(4, 8), sc: T.sc, noise: T.sc.map(() => gauss()) };
+    S.calendar.push(ev);
+    S.calendar.sort((a, b) => a.week - b.week);
+  },
+  step() {
+    if (S.week >= S.nextCalWeek) { this.schedule(); S.nextCalWeek = S.week + randInt(3, 6); }
+    for (const ev of S.calendar.slice()) {
+      if (ev.week === S.week + 1) UI.toast(`📅 La semaine prochaine : ${ev.icon} ${ev.name}`, 'info');
+      if (ev.week > S.week) continue;
+      const r = rng(); let acc = 0, out = ev.sc[ev.sc.length - 1];
+      for (const sc of ev.sc) { acc += sc.p; if (r <= acc) { out = sc; break; } }
+      const k = CONFIG.MODES[S.difficulty].eventSeverity;
+      const x = {}; for (const f in out.x) x[f] = out.x[f] * (out.x[f] < 0 ? k : 1);
+      if (Object.keys(x).length) Market.factorShock(x, false);
+      S.calendar = S.calendar.filter(e => e !== ev);
+      Game.log(`📅 ${ev.icon} ${ev.name} : ${out.label}.`, 'info');
+      UI.toast(`📅 ${ev.name} : ${out.label}`, out.x.M < 0 || out.x.R > 0 ? 'warn' : 'good');
+    }
+  }
+};
+
+/* --- Couvertures : options de vente (protection) sur un actif --- */
+const Hedges = {
+  available() { return S.prop.launched && S.tier >= 2; },
+  months: 13,
+  /* Prime ≈ 0,25 × volatilité prévue × √durée (plus chère quand le marché est nerveux) */
+  premiumRate(k) { return 0.25 * Market.expectedVol(k, this.months) * Math.sqrt(this.months / 52); },
+  value() { if (!S || !S.hedges) return 0; let v = 0; for (const h of S.hedges) v += this.payoff(h); return v; },
+  payoff(h) { const pr = S.market.prices[h.k]; return h.notional * Math.max(0, h.strike - pr) / h.spot; },
+  buy(k, frac) {
+    const A = Portfolio.aum(); const notional = A * frac; const prem = notional * this.premiumRate(k);
+    if (prem > Portfolio.liquid() * 0.5) return UI.toast('Liquidités du fonds insuffisantes.', 'bad');
+    Portfolio.withdraw(prem); Portfolio.syncNavps();
+    const spot = S.market.prices[k];
+    S.hedges.push({ id: S.nextHedgeId++, k, notional, spot, strike: spot * 0.9, expiry: S.week + this.months, premium: prem });
+    Game.log(`🛡️ Protection achetée sur ${CONFIG.ASSETS[k].name} : ${fmtMoney(notional)} couverts sous −10 %, prime ${fmtMoney(prem)}.`, 'info');
+    UI.renderAll();
+  },
+  close(id, expired) {
+    const h = S.hedges.find(x => x.id === id); if (!h) return;
+    const v = this.payoff(h);
+    S.hedges = S.hedges.filter(x => x !== h);
+    if (v > 0) Portfolio.deposit(v);
+    Portfolio.syncNavps();
+    Game.log(`🛡️ Protection ${CONFIG.ASSETS[h.k].name} ${expired ? 'arrivée à échéance' : 'revendue'} : ${v > 0 ? 'gain ' + fmtMoney(v) : 'expire sans valeur'}.`, v > 0 ? 'good' : 'info');
+    if (!UI.batch) UI.renderAll();
+  },
+  step() { for (const h of S.hedges.slice()) if (S.week >= h.expiry) this.close(h.id, true); },
+  /* La protection réduit le score de risque (jusqu'à −15 points) */
+  riskRelief() { const A = Portfolio.aum(); if (!S.hedges.length || A <= 0) return 0; return Math.min(15, S.hedges.reduce((t, h) => t + h.notional, 0) / A * 30); }
+};
+
+/* --- Fonds concurrents et classement --- */
+const RIVAL_DEFS = [
+  { name: 'Blackstone Ridge', icon: '🗻', style: 'Actions monde', w: { equities: 0.9 } },
+  { name: 'Aurora Macro', icon: '🌐', style: 'Global macro', w: { equities: 0.35, bonds: 0.35, commodities: 0.15, fx: 0.15 } },
+  { name: 'Quantica', icon: '🧮', style: 'Quantitatif', w: { equities: 0.3, bonds: 0.4, fx: 0.1 }, alpha: 0.02 },
+  { name: 'Moonshot Capital', icon: '🌙', style: 'Croissance & tech', w: { tech: 0.7, crypto: 0.15 } },
+  { name: 'Prudentia', icon: '🛡️', style: 'Défensif', w: { bonds: 0.5, health: 0.15, staples: 0.15 } },
+  { name: 'Iron Value', icon: '⚙️', style: 'Value', w: { finance: 0.3, energy: 0.3, industrials: 0.3 } }
+];
+const Rivals = {
+  init() { S.rivals = RIVAL_DEFS.map(d => ({ name: d.name, nav: 100, hist: [100], idio: 0 })); },
+  step() {
+    if (!S.rivals.length) this.init();
+    const r = S.market.lastReturns;
+    S.rivals.forEach((x, i) => {
+      const d = RIVAL_DEFS[i];
+      let ret = (d.alpha || 0.01) / 52 - CONFIG.MGMT_FEE / 52 + gauss() * 0.008;
+      for (const k in d.w) ret += d.w[k] * (r[k] || 0);
+      x.nav *= 1 + ret; x.hist.push(x.nav); if (x.hist.length > 53) x.hist.shift();
+    });
+  },
+  perf(h) { const n = Math.min(52, h.length - 1); return n > 0 ? h[h.length - 1] / h[h.length - 1 - n] - 1 : 0; },
+  /* Classement sur 52 semaines (le joueur compte à partir du lancement) */
+  table() {
+    const rows = S.rivals.map((x, i) => ({ name: RIVAL_DEFS[i].name, icon: RIVAL_DEFS[i].icon, style: RIVAL_DEFS[i].style, perf: this.perf(x.hist), me: false }));
+    if (S.prop.launched) rows.push({ name: S.fundName, icon: '⭐', style: S.strategy ? STRATEGIES[S.strategy].name : '—', perf: this.perf(S.fund.navHist.slice(-53)), me: true });
+    return rows.sort((a, b) => b.perf - a.perf);
+  },
+  rank() { const t = this.table(); const i = t.findIndex(r => r.me); return i < 0 ? null : i + 1; },
+  /* Top 3 : +15 % d'attractivité ; dernier : −10 % (après 26 semaines d'historique) */
+  attractMult() { if (!S.prop.launched || S.fund.navHist.length < 27) return 1; const r = this.rank(); return r === null ? 1 : r <= 3 ? 1.15 : r === S.rivals.length + 1 ? 0.9 : 1; }
+};
+
+/* --- Activité bancaire (palier 12) --- */
+const Bank = {
+  available() { return S.tier >= 12; },
+  invest(frac) { const amt = S.cash * frac; if (amt <= 0) return; S.cash -= amt; S.bank.capital += amt; Game.log(`🏦 ${fmtMoney(amt)} apportés au capital de la banque.`, 'info'); UI.renderAll(); },
+  withdraw(frac) { const amt = S.bank.capital * frac; S.bank.capital -= amt; S.cash += amt * 0.97; Game.log(`🏦 ${fmtMoney(amt)} retirés de la banque (3 % de frais de sortie).`, 'info'); UI.renderAll(); },
+  /* Marge d'intérêt ~8 %/an, pertes sur crédits en baisse et surtout en crise */
+  step() {
+    if (!S.bank.capital) { S.bank.lastPnl = 0; return; }
+    const rate = { bull: 0.09, range: 0.08, bear: 0.03, crisis: -0.20, bubble: 0.10 }[S.market.regime] - (S.compliance < 70 ? 0.03 : 0);
+    const pnl = S.bank.capital * rate / 52;
+    S.cash += pnl; S.bank.lastPnl = pnl;
+  }
+};
+
+/* --- Prestige (palier 15) --- */
+const Prestige = {
+  go() {
+    const l = Legacy.get();
+    l.prestige = (l.prestige || 0) + 1;
+    l.runs = (l.runs || 0) + 1;
+    l.bestAUM = Math.max(l.bestAUM || 0, S.stats.peakAUM);
+    try { Save.storage()?.setItem(CONFIG.LEGACY_KEY, JSON.stringify(l)); } catch (e) { /* ignore */ }
+    Game.log(`🌌 Prestige ${l.prestige} ! Une nouvelle partie commence avec des bonus permanents.`, 'tier');
+    Save.clear();
+    UI.showStart(false);
+  }
+};
+
 /* --- Jalons narratifs du milieu de partie --- */
 const MILESTONES = [{ id: 'm_press', at: 5e5 }, { id: 'm_dd', at: 2.5e6 }, { id: 'm_equity', at: 1e7 }, { id: 'm_conf', at: 5e7 }, { id: 'm_rank', at: 2.5e8 }];
 const Milestones = {
@@ -2896,6 +3133,8 @@ const Game = {
     RNG.seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     S = createState(difficulty, name, legacy);
     S.tutorial = { on: !!tutorial, step: 0, mark: 0, preset: false };
+    S.prestige = legacy.prestige || 0;
+    if (S.prestige) { S.reputation += 5 * S.prestige; this.log(`🌌 Prestige ${S.prestige} : réputation de départ +${5 * S.prestige}, clients +${10 * Math.min(3, S.prestige)} %.`, 'tier'); }
     Market.warmup(30);
     Portfolio.applyPreset(difficulty === 'casual' ? 'equilibre' : 'equilibre');
     Team.refreshCandidates(true);
@@ -2914,7 +3153,9 @@ const Game = {
     const cash0 = S.cash, aum0 = Portfolio.aum();
     S.last.txFees = 0;
     Market.step();                 // 1. prix (régime + volatilité + corrélations)
+    Calendar.step();               // 1b. rendez-vous macro du jour
     Portfolio.applyReturns();      // 2. revenus du portefeuille
+    Hedges.step();                 // 2a. couvertures (échéances)
     Prop.step();                   // 2b. compte prop firm (challenge / financé)
     Portfolio.weeklyTrading();     // 3. frais de transaction (stop-loss, rééquilibrage)
     Team.paySalaries();            // 4. salaires
@@ -2922,6 +3163,8 @@ const Game = {
     Opps.mature();                 // 5b. opportunités arrivées à échéance
     Investors.step();              // 6. flux des investisseurs
     Satellites.step();             // 6b. fonds satellites
+    Rivals.step();                 // 6c. fonds concurrents
+    Bank.step();                   // 6d. activité bancaire
     Risk.step();                   // 7. risque, conformité, réputation, recherche
     Team.refreshCandidates(false);
     Team.updateMorale();
@@ -2941,6 +3184,33 @@ const Game = {
     S.seed = RNG.seed;
     if (!UI.batch) UI.renderAll();
     return true;
+  },
+
+  /* Mois suivant : 4 semaines d'un coup, arrêt si quelque chose demande votre attention */
+  month() {
+    if (!S || S.status !== 'playing') return;
+    if (S.events.pending) return UI.showEvent();
+    const t0 = S.tier, ph0 = S.prop.phase, mc0 = S.counters.marginCalls, q0 = S.quarterN, nav0 = S.fund.navps, aum0 = this.totalAUM(), cash0 = S.cash, w0 = S.week;
+    UI.batch = true;
+    let why = null;
+    try {
+      for (let i = 0; i < 4; i++) {
+        if (!this.tick()) break;
+        if (S.status !== 'playing') { why = 'fin de partie'; break; }
+        if (S.events.pending) { why = 'événement'; break; }
+        if (S.tier !== t0) { why = 'déménagement'; break; }
+        if (S.prop.phase !== ph0) { why = 'étape prop firm'; break; }
+        if (S.counters.marginCalls !== mc0) { why = 'margin call'; break; }
+        if (S.quarterN !== q0) { why = 'rapport trimestriel'; break; }
+        if (S.market.regime === 'crisis' && S.market.perceived === 'crisis' && S.market.perceivedSince === S.week) { why = 'crise détectée'; break; }
+        if (Prop.active() && Prop.dd() > Prop.rules().maxDD * 0.7) { why = 'perte prop proche de la limite'; break; }
+      }
+    } finally { UI.batch = false; }
+    UI.renderAll();
+    const n = S.week - w0;
+    UI.toast(`⏩ ${n} sem. : NAV ${fmtPct(S.fund.navps / nav0 - 1, 1, true)} · AUM ${fmtMoney(this.totalAUM() - aum0)} · cash ${fmtMoney(S.cash - cash0)}${why ? ' — arrêt : ' + why : ''}`, why ? 'warn' : 'info');
+    if (S.events.pending) UI.showEvent();
+    else if (S.quarterN !== q0 && S.showReports) UI.showReport();
   },
 
   /* AUM total de la société : fonds principal + fonds satellites */
@@ -2970,6 +3240,7 @@ const Game = {
     UI.renderAll();
     UI.toast(`⏭️ ${n} semaine(s) passée(s) — arrêt : ${why}.`, 'info');
     if (S.events.pending) UI.showEvent();
+    else if (S.quarterN !== q0 && S.showReports) UI.showReport();
   },
 
   /* Bilan de fin de régime : votre NAV comparée au préréglage Équilibré */
@@ -3044,29 +3315,67 @@ const Game = {
    12. SAVE — localStorage (sauvegarde, chargement, reset) + legacy
    ============================================================================= */
 const Save = {
+  slot: 1,
+  key(n) { return n === 1 ? CONFIG.SAVE_KEY : CONFIG.SAVE_KEY + '_s' + n; },
   storage() { try { return window.localStorage; } catch (e) { return null; } },
-  exists() { const st = this.storage(); try { return !!(st && st.getItem(CONFIG.SAVE_KEY)); } catch (e) { return false; } },
+  raw(n) { const st = this.storage(); try { return st ? st.getItem(this.key(n)) : null; } catch (e) { return null; } },
+  exists() { return [1, 2, 3].some(n => !!this.raw(n)); },
+  lastSlot() { const st = this.storage(); let n = 1; try { n = Number(st && st.getItem('hft_last_slot')) || 1; } catch (e) { /* ignore */ } return this.raw(n) ? n : ([1, 2, 3].find(x => this.raw(x)) || 1); },
+  firstFree() { return [1, 2, 3].find(n => !this.raw(n)) || this.lastSlot(); },
+  /* Résumé d'un emplacement (pour les listes) */
+  info(n) {
+    const r = this.raw(n); if (!r) return null;
+    try { const d = JSON.parse(r); const h = d.history || {}; return { name: d.fundName, difficulty: d.difficulty, week: d.week, tier: d.tier, aum: (h.aum && h.aum.length) ? h.aum[h.aum.length - 1] : 0 }; } catch (e) { return { name: '(illisible)', week: 0, tier: 0, aum: 0 }; }
+  },
   save(silent) {
     if (!S || !UI.enabled) return false;
     const st = this.storage();
     if (!st) { if (!silent) UI.toast('Sauvegarde indisponible (localStorage bloqué).', 'bad'); return false; }
     try {
       S.seed = RNG.seed;
-      st.setItem(CONFIG.SAVE_KEY, JSON.stringify(S));
-      if (!silent) UI.toast('💾 Partie sauvegardée.', 'good');
+      st.setItem(this.key(this.slot), JSON.stringify(S));
+      st.setItem('hft_last_slot', String(this.slot));
+      if (!silent) UI.toast(`💾 Partie sauvegardée (emplacement ${this.slot}).`, 'good');
       return true;
     } catch (e) {
       if (!silent) UI.toast('Erreur de sauvegarde : ' + e.message, 'bad');
       return false;
     }
   },
-  load() {
-    const st = this.storage();
-    if (!st) return false;
+  exportFile() {
+    if (!S) return;
+    const blob = new Blob([JSON.stringify(S)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `hedge-fund-tycoon-${(S.fundName || 'partie').replace(/[^\w-]+/g, '_')}-sem${S.week}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    UI.toast('⬇️ Partie exportée.', 'good');
+  },
+  importFile(file) {
+    const fr = new FileReader();
+    fr.onload = () => {
+      try { const data = JSON.parse(fr.result); if (!data || typeof data !== 'object' || !data.fund) throw new Error('fichier non reconnu'); this.restore(data); UI.closeModal(); UI.afterLoad(); this.save(true); UI.toast(`⬆️ Partie importée dans l'emplacement ${this.slot}.`, 'good'); }
+      catch (e) { UI.toast('Import impossible : ' + e.message, 'bad'); }
+    };
+    fr.readAsText(file);
+  },
+  load(n = this.slot) {
     try {
-      const raw = st.getItem(CONFIG.SAVE_KEY);
-      if (!raw) { UI.toast('Aucune sauvegarde trouvée.', 'warn'); return false; }
-      const data = JSON.parse(raw);
+      const raw = this.raw(n);
+      if (!raw) { UI.toast('Aucune sauvegarde dans cet emplacement.', 'warn'); return false; }
+      this.slot = n;
+      this.restore(JSON.parse(raw));
+      UI.toast(`📂 Partie chargée (emplacement ${n}).`, 'good');
+      return true;
+    } catch (e) {
+      UI.toast('Sauvegarde illisible : ' + e.message, 'bad');
+      return false;
+    }
+  },
+  /* Reconstruit l'état à partir de données sauvegardées (migration douce) */
+  restore(data) {
+    {
       // Migration douce : on complète avec un état neuf pour les champs manquants
       const fresh = createState(data.difficulty || 'casual', data.fundName, Legacy.get());
       S = deepMerge(fresh, data);
@@ -3077,14 +3386,9 @@ const Save = {
       if (S.prop.launched && !S.strategy && !S.events.pending) S.events.queue = ['fund_strategy'];
       RNG.seed = (S.seed >>> 0) || RNG.seed;
       Team.invalidate();
-      UI.toast('📂 Partie chargée.', 'good');
-      return true;
-    } catch (e) {
-      UI.toast('Sauvegarde illisible : ' + e.message, 'bad');
-      return false;
     }
   },
-  clear() { const st = this.storage(); try { if (st) st.removeItem(CONFIG.SAVE_KEY); } catch (e) { /* ignore */ } }
+  clear(n = this.slot) { const st = this.storage(); try { if (st) st.removeItem(this.key(n)); } catch (e) { /* ignore */ } }
 };
 function deepMerge(base, over) {
   if (Array.isArray(over)) return over;
@@ -3110,6 +3414,36 @@ const Legacy = {
   },
   bonus() { return Math.min(CONFIG.LEGACY_CAP, (this.get().runs || 0) * CONFIG.LEGACY_STEP); }
 };
+
+/* Glossaire : définitions affichées en infobulle (gl) et dans la fenêtre 📖 */
+const GLOSSARY = {
+  'AUM': "Assets Under Management : l'argent total que vous gérez pour vos clients.",
+  'NAV': "Valeur liquidative d'une part du fonds. Elle part de 100 au lancement ; si elle monte à 110, vos clients ont gagné 10 %.",
+  'Drawdown': 'Baisse depuis le plus haut atteint. Un drawdown de 10 % signifie que vous êtes 10 % sous votre meilleur niveau.',
+  'High-water mark': "Plus haut historique de la NAV. La commission de performance n'est prélevée que sur les gains au-delà de ce niveau.",
+  'Frais de gestion': "2 % par an de l'AUM, prélevés chaque semaine : le revenu de base de votre société.",
+  'Commission de performance': '20 % des gains au-dessus du high-water mark, prélevés chaque trimestre.',
+  'Volatilité': "Ampleur des variations d'un actif sur un an. 16 % ≈ les actions ; 70 % ≈ la crypto.",
+  'Sharpe': 'Rendement obtenu par unité de risque (rendement − 2 %) / volatilité. Au-dessus de 1, c’est excellent.',
+  'Bêta': 'Sensibilité au marché actions : un bêta de 1,5 monte (ou baisse) 1,5 fois plus que le marché.',
+  'Corrélation': 'Tendance de deux actifs à bouger ensemble (+1), indépendamment (0) ou en sens inverse (−1).',
+  'Diversification': 'Répartir le risque sur des actifs peu corrélés pour que tout ne baisse pas en même temps.',
+  'Levier': "Investir plus que l'argent du fonds en empruntant (2x = 200 % d'exposition). Amplifie gains et pertes.",
+  'Vente à découvert': 'Parier sur la baisse d’un actif (position négative). Coûte des frais d’emprunt.',
+  'Exposition brute': 'Somme des positions (achats + ventes à découvert) rapportée à l’AUM.',
+  'Margin call': 'Vente forcée de vos positions quand le risque dépasse 90/100.',
+  'Lock-up': 'Période pendant laquelle un client ne peut pas retirer son argent.',
+  'Préavis de retrait': 'Un gros client annonce qu’il part dans 4 semaines : vous pouvez tenter de le retenir.',
+  'Régime de marché': 'Phase du marché (haussier, latéral, baissier, crise, bulle) qui change toutes les quelques semaines.',
+  'Indice de référence': 'Portefeuille type à battre, qui dépend de votre stratégie.',
+  'Couverture': 'Protection (option de vente) qui rapporte si un actif baisse de plus de 10 %, contre une prime payée d’avance.',
+  'Prime': 'Prix payé pour une protection. Elle est plus chère quand le marché est nerveux.',
+  'Frontière efficiente': 'Ensemble des portefeuilles offrant le meilleur rendement pour un niveau de risque donné.',
+  'Prop firm': 'Société qui confie son capital à des traders contre une part des gains, après un challenge.',
+  'Track record': 'Historique de performance qui prouve votre talent aux investisseurs.',
+  'Conformité': 'Respect des règles. Sous 50 : amendes ; sous 20 trop longtemps : licence retirée.'
+};
+function gl(term, label) { return `<span class="gl" data-gl="${esc(term)}" title="${esc(GLOSSARY[term] || '')}">${label || term}</span>`; }
 
 /* =============================================================================
    13. UI — rendu, onglets, modales, toasts, graphique
@@ -3142,7 +3476,9 @@ const UI = {
     this.$('btnAuto').addEventListener('click', () => this.toggleAuto());
     this.$('btnSkip').addEventListener('click', () => Game.skip());
     this.$('btnSave').addEventListener('click', () => Save.save(false));
-    this.$('btnLoad').addEventListener('click', () => this.confirm('Charger la sauvegarde ?', 'La partie en cours non sauvegardée sera perdue.', () => { if (Save.load()) this.afterLoad(); }));
+    this.$('btnLoad').addEventListener('click', () => this.showSlots());
+    this.$('btnMonth').addEventListener('click', () => Game.month());
+    this.$('btnGloss').addEventListener('click', () => this.showGlossary());
     this.$('btnSettings').addEventListener('click', () => this.showSettings());
     document.addEventListener('click', e => this.onClick(e));
     document.addEventListener('input', e => this.onInput(e));
@@ -3157,6 +3493,8 @@ const UI = {
 
   /* ---------- Délégation d'événements ---------- */
   onClick(e) {
+    const gt = e.target.closest('[data-gl]');
+    if (gt && !e.target.closest('.modal')) { this.showGlossary(gt.dataset.gl); return; }
     const tb = e.target.closest('[data-tut]');
     if (tb) { tb.dataset.tut === 'next' ? Tutorial.next() : Tutorial.stop(); return; }
     const el = e.target.closest('[data-tab],[data-act],[data-modal]');
@@ -3199,6 +3537,12 @@ const UI = {
       case 'sat-launch': Satellites.launch(k); break;
       case 'sat-close': this.confirm('Fermer ce fonds ?', 'Les clients récupèrent leur argent (réputation −2).', () => Satellites.close(id)); break;
       case 'report': this.showReport(); break;
+      case 'hedge-buy': Hedges.buy(this.hedgeK || 'equities', Number(el.dataset.f)); break;
+      case 'hedge-close': Hedges.close(id); break;
+      case 'retain': Investors.retain(id); break;
+      case 'bank-in': Bank.invest(Number(el.dataset.f)); break;
+      case 'bank-out': Bank.withdraw(Number(el.dataset.f)); break;
+      case 'prestige': this.confirm('Prestige ?', 'La partie actuelle se termine. Vous recommencez avec : réputation de départ +5 et clients +10 % par niveau de prestige (cumulables).', () => Prestige.go()); break;
       case 'corr-mode': this.corrMode = this.corrMode === 'theo' ? 'obs' : 'theo'; this.renderTab(); break;
       case 'prop-quit': this.confirm('Quitter la prop firm ?', 'Vous ne toucherez plus de versements.', () => Prop.quit()); break;
       case 'founder-in': Investors.founderInvest(S.cash * Number(el.dataset.f)); break;
@@ -3227,6 +3571,7 @@ const UI = {
     if (el.classList.contains('alloc-slider')) { this.renderTab(); this.renderHeaderStats(); }
     if (el.dataset.sl) { S.fund.stopLoss[el.dataset.sl] = Number(el.value); S.fund.refPrice[el.dataset.sl] = S.market.prices[el.dataset.sl]; }
     if (el.id === 'ddAlertSel') { S.fund.ddAlert = Number(el.value); S.fund.ddAlerted = false; }
+    if (el.id === 'hedgeSel') { this.hedgeK = el.value; this.renderTab(); }
   },
   /* Empêche la somme brute des cibles de dépasser le levier autorisé */
   clampTargetRoom(k) {
@@ -3272,6 +3617,7 @@ const UI = {
     this.renderGoalBar();
     this.$('chartTitle').textContent = S.prop.launched ? 'Valeur liquidative du fonds (NAV par part, base 100 au lancement) & AUM' : 'Performance de votre allocation (base 100) — le fonds n’est pas encore lancé';
     this.$('btnSkip').disabled = S.status !== 'playing';
+    this.$('btnMonth').disabled = S.status !== 'playing';
     const gauge = (v, color) => `<div class="gauge"><div style="width:${clamp(v, 0, 100)}%;background:${color}"></div></div>`;
     const colHigh = v => v > 90 ? 'var(--red)' : v > 70 ? 'var(--amber)' : v > 50 ? '#facc15' : 'var(--green)';
     const colLow = v => v < 20 ? 'var(--red)' : v < 50 ? 'var(--amber)' : 'var(--green)';
@@ -3283,8 +3629,8 @@ const UI = {
       { l: 'AUM', v: fmtMoney(A), s: `<span class="${cls(S.last.subs - S.last.reds)}">flux ${S.last.subs - S.last.reds >= 0 ? '+' : ''}${fmtMoney(S.last.subs - S.last.reds)}</span>` },
       { l: S.prop.launched ? 'NAV / part' : 'Allocation (base 100)', v: fmtNum(S.fund.navps, 2), s: `<span class="${cls(S.last.fundReturn)}">${fmtPct(S.last.fundReturn, 2, true)} sem.</span>` },
       { l: 'Réputation', v: `${Math.round(S.reputation)}<span class="small muted">/100</span>`, s: gauge(S.reputation, 'var(--accent)') },
-      { l: 'Risque', v: `${Math.round(S.risk)}<span class="small muted">/100</span>`, s: gauge(S.risk, colHigh(S.risk)), c: S.risk > 90 ? 'red' : S.risk > 70 ? 'amber' : '' },
-      { l: 'Conformité', v: `${Math.round(S.compliance)}<span class="small muted">/100</span>`, s: gauge(S.compliance, colLow(S.compliance)), c: S.compliance < 20 ? 'red' : S.compliance < 50 ? 'amber' : '' },
+      { l: gl('Margin call', 'Risque'), v: `${Math.round(S.risk)}<span class="small muted">/100</span>`, s: gauge(S.risk, colHigh(S.risk)), c: S.risk > 90 ? 'red' : S.risk > 70 ? 'amber' : '' },
+      { l: gl('Conformité'), v: `${Math.round(S.compliance)}<span class="small muted">/100</span>`, s: gauge(S.compliance, colLow(S.compliance)), c: S.compliance < 20 ? 'red' : S.compliance < 50 ? 'amber' : '' },
       { l: 'Confiance clients', v: `${Math.round(conf)}<span class="small muted">/100</span>`, s: gauge(conf, colLow(conf)) },
       { l: 'Recherche', v: `🔬 ${fmtNum(Math.floor(S.rp))}`, s: `<span class="muted">+${fmtNum(Team.rpPerWeek(), 1)}/sem</span>` },
       { l: 'Jour', v: `${fmtNum(S.week * 7)}`, s: `<span class="muted">Sem. ${S.week} · An ${Math.floor(S.week / 52) + 1}</span>` }
@@ -3354,7 +3700,7 @@ const UI = {
         ${this.sparkline(m.hist[k])}
         <div class="kv small"><span class="muted">Rendement prévu</span><span class="num ${cls(fc)}">${fmtPct(fc, 1, true)}/an <span class="muted">±${fmtPct(Portfolio.forecastError(k), 0)}</span></span></div>
         ${unlocked ? `<div class="kv small"><span class="muted">Recommandation</span><span class="pill ${Portfolio.rating(k).c}">${Portfolio.rating(k).t}</span></div>` : ''}
-        <div class="kv small"><span class="muted" title="Volatilité annualisée attendue sur les 13 prochaines semaines, selon le régime perçu et les probabilités de changement de régime">Volatilité prévue (an)</span><span class="num">${fmtPct(Market.expectedVol(k), 0)}</span></div>
+        <div class="kv small"><span class="muted" title="Volatilité annualisée attendue sur les 3 prochains mois et sur 1 an, selon le régime perçu et les probabilités de changement de régime. Si celle à 3 mois dépasse celle à 1 an, le marché est plus nerveux que d’habitude.">Volatilité prévue</span><span class="num">3 mois ${fmtPct(Market.expectedVol(k, 13), 0)} · 1 an ${fmtPct(Market.expectedVol(k, 52), 0)}</span></div>
         <div class="kv small"><span class="muted">Liquidité</span><span>${a.liq} · frais ${fmtPct(Portfolio.feeRate(k), 2)}</span></div>
         ${a.profile ? `<div class="small muted">${a.profile}</div>` : ''}
       </div>`;
@@ -3398,7 +3744,12 @@ const UI = {
       opps = (open || '<div class="small muted">Aucune opportunité ouverte. Prochaine dans quelques semaines.</div>') + (held ? `<h4 class="mt">Positions en cours</h4>${held}` : '')
         + `<div class="small muted mt">Maximum ${fmtPct(Opps.maxShare, 0)} de l'AUM engagé. La fiabilité de la probabilité affichée dépend de la qualité d'information.</div>`;
     }
-    return `<div class="grid g2 mt"><div class="card"><h4>🗣️ L'équipe vous parle</h4>${adv}</div><div class="card"><h4>💡 Opportunités</h4>${opps}</div></div>`;
+    const cal = S.calendar.length ? S.calendar.map(ev => { const pr = Calendar.shown(ev); const wk = ev.week - S.week;
+        return `<div class="card" style="margin-top:6px"><b>${ev.icon} ${ev.name}</b> <span class="pill ${wk <= 1 ? 'a' : ''}">${wk <= 0 ? 'cette semaine' : 'dans ' + wk + ' sem.'}</span>
+          ${ev.sc.map((sc, i) => `<div class="kv small"><span>${sc.label}</span><span class="num">${fmtPct(pr[i], 0)}</span></div>`).join('')}</div>`; }).join('')
+      : '<div class="small muted">Aucun rendez-vous annoncé pour l’instant.</div>';
+    return `<div class="grid g3 mt"><div class="card"><h4>📅 Calendrier macro</h4>${cal}<div class="small muted mt">Probabilités estimées par l'équipe (plus fiables avec une bonne qualité d'information). Anticipez : couvrez-vous ou ajustez l'allocation avant l'annonce.</div></div>
+      <div class="card"><h4>🗣️ L'équipe vous parle</h4>${adv}</div><div class="card"><h4>💡 Opportunités</h4>${opps}</div></div>`;
   },
 
   /* ---------- Onglet Portefeuille ---------- */
@@ -3456,11 +3807,11 @@ const UI = {
           <h4>Synthèse du fonds</h4>
           <div class="kv"><span class="muted">AUM</span><b class="num">${fmtMoney(A)}</b></div>
           <div class="kv"><span class="muted">Cash du fonds (cible)</span><span class="num" id="tgtCash">${Portfolio.targetCash()} %</span></div>
-          <div class="kv"><span class="muted">Exposition brute / levier effectif</span><span class="num">${fmtPct(Portfolio.gross(), 0)}</span></div>
+          <div class="kv"><span class="muted">${gl('Exposition brute')} / ${gl('Levier', 'levier effectif')}</span><span class="num">${fmtPct(Portfolio.gross(), 0)}</span></div>
           <div class="kv"><span class="muted">Volatilité estimée (an)</span><span class="num">${fmtPct(Risk.portfolioVol(A <= 0), 1)}</span></div>
           <div class="kv"><span class="muted">Performance 26 sem. (annualisée)</span><span class="num ${cls(Investors.perfAnnual(26))}">${fmtPct(Investors.perfAnnual(26), 1, true)}</span></div>
-          <div class="kv"><span class="muted">Drawdown depuis le plus haut</span><span class="num ${Portfolio.drawdown() > 0.1 ? 'red' : ''}">${fmtPct(Portfolio.drawdown(), 1)}</span></div>
-          <div class="kv"><span class="muted">High-water mark</span><span class="num">${fmtNum(f.hwm, 2)}</span></div>
+          <div class="kv"><span class="muted">${gl('Drawdown')} depuis le plus haut</span><span class="num ${Portfolio.drawdown() > 0.1 ? 'red' : ''}">${fmtPct(Portfolio.drawdown(), 1)}</span></div>
+          <div class="kv"><span class="muted">${gl('High-water mark')}</span><span class="num">${fmtNum(f.hwm, 2)}</span></div>
           <div class="kv"><span class="muted">Frais de transaction (sem. dernière)</span><span class="num">${fmtMoney(S.last.txFees)}</span></div>
           ${shorts.length ? `<div class="kv"><span class="muted">Positions courtes</span><span>${shorts.map(k => CONFIG.ASSETS[k].name).join(', ')}</span></div>` : ''}
           <div class="row mt">
@@ -3477,10 +3828,28 @@ const UI = {
           </div>
         </div>
       </div>
+      ${this.hedgeCard()}
       <div class="card mt">
         <div class="row between"><h4 style="margin:0">Allocation cible par actif</h4><span class="small muted">Somme brute max : ${f.leverage * 100} % · le reste est en cash ${f.leverage > 1 ? '(cash négatif = emprunt à ' + fmtPct(CONFIG.BORROW_RATE, 0) + ')' : ''}</span></div>
         ${rows}
       </div>`;
+  },
+  /* Couvertures : achat de protections (options de vente) */
+  hedgeCard() {
+    if (!Hedges.available()) return '';
+    const A = Portfolio.aum();
+    const ks = RISKY.filter(k => Market.isUnlocked(k) && (CONFIG.ASSETS[k].group === 'actions' || ['crypto', 'commodities', 'space'].includes(k)));
+    this.hedgeK = ks.includes(this.hedgeK) ? this.hedgeK : 'equities';
+    const rate = Hedges.premiumRate(this.hedgeK);
+    const list = S.hedges.map(h => `<div class="kv small"><span>${CONFIG.ASSETS[h.k].icon} ${CONFIG.ASSETS[h.k].name} · ${fmtMoney(h.notional)} couverts sous ${fmtNum(h.strike, 1)} (prix ${fmtNum(S.market.prices[h.k], 1)})</span>
+      <span class="num">valeur ${fmtMoney(Hedges.payoff(h))} · ${h.expiry - S.week} sem. <button class="btn small" data-act="hedge-close" data-id="${h.id}">Revendre</button></span></div>`).join('');
+    return `<div class="card mt"><h4>🛡️ ${gl('Couverture', 'Couvertures')} (protections)</h4>
+      <div class="small muted">Une protection rapporte la baisse de l'actif au-delà de −10 % pendant 13 semaines. Vous payez une ${gl('Prime', 'prime')} d'avance (plus chère quand le marché est nerveux). Elle réduit aussi le score de risque.</div>
+      <div class="row mt"><select id="hedgeSel">${ks.map(k => `<option value="${k}" ${k === this.hedgeK ? 'selected' : ''}>${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name}</option>`).join('')}</select>
+      <span class="small">Prime : <b>${fmtPct(rate, 1)}</b> du montant couvert</span>
+      ${[0.1, 0.25, 0.5].map(f => `<button class="btn small" data-act="hedge-buy" data-f="${f}">Couvrir ${fmtPct(f, 0)} de l'AUM (prime ${fmtMoney(A * f * rate)})</button>`).join('')}</div>
+      ${list ? `<h4 class="mt">Protections en cours</h4>${list}` : ''}
+      ${Object.keys(S.exclusions).length ? `<div class="small amber mt">🚫 Exclusions clients : ${Object.keys(S.exclusions).map(k => CONFIG.ASSETS[k].name).join(', ')}</div>` : ''}</div>`;
   },
   /* Carte prop firm (en haut de l'onglet Portefeuille) */
   propCard() {
@@ -3499,6 +3868,7 @@ const UI = {
         <div class="bar"><div style="width:${clamp(Prop.gain() / r.target, 0, 1) * 100}%"></div></div>
         <div class="kv mt"><span class="muted">Drawdown / limite</span><span class="num ${Prop.dd() > r.maxDD * 0.6 ? 'red' : ''}">${fmtPct(Prop.dd(), 1)} / ${fmtPct(r.maxDD, 0)}</span></div>
         <div class="bar"><div style="width:${clamp(Prop.dd() / r.maxDD, 0, 1) * 100}%;background:var(--red)"></div></div>
+        <div class="kv mt"><span class="muted">Frais de transaction (sem. / total)</span><span class="num">${fmtMoney(p.lastFee || 0)} / ${fmtMoney(p.fees || 0)}</span></div>
         ${r.deadline ? `<div class="kv mt"><span class="muted">Temps</span><span class="num">${S.week - p.startWeek} / ${r.deadline} sem.</span></div>` : ''}
         <div class="small muted mt">Astuce : le drawdown est éliminatoire. Une allocation Équilibrée ou Prudente passe plus sûrement qu'un pari Dynamique.</div>`;
     } else {
@@ -3507,6 +3877,7 @@ const UI = {
         <div class="kv"><span class="muted">Drawdown / limite</span><span class="num ${Prop.dd() > r.maxDD * 0.6 ? 'red' : ''}">${fmtPct(Prop.dd(), 1)} / ${fmtPct(r.maxDD, 0)}</span></div>
         <div class="kv"><span class="muted">Track record</span><span class="num ${cls(Prop.trackAnnual())}">${fmtPct(Prop.trackAnnual(), 1, true)}/an sur ${p.fundedWeeks} sem.</span></div>
         <div class="kv"><span class="muted">Gains encaissés</span><span class="num green">${fmtMoney(p.payouts)}</span></div>
+        <div class="kv"><span class="muted">Frais de transaction (sem. / total)</span><span class="num">${fmtMoney(p.lastFee || 0)} / ${fmtMoney(p.fees || 0)}</span></div>
         ${p.launched ? '<div class="row mt"><button class="btn small" data-act="prop-quit">Quitter la prop firm</button></div>' : `<div class="small muted mt">Lancement du fonds possible après ${r.gradWeeks} semaines financées avec un track record positif (${p.fundedWeeks}/${r.gradWeeks}). Un bon track record donne plus de réputation et de premiers clients.</div>`}`;
     }
     const title = { idle: '🎯 Prop firm : challenge', challenge: '🎯 Challenge en cours', funded: '💼 Compte financé' }[p.phase];
@@ -3617,6 +3988,8 @@ const UI = {
           ${S.fund.carry ? `<div class="kv"><span class="muted">Carried interest employés</span><span>${fmtPct(S.fund.carry, 0)}</span></div>` : ''}</div>
         <div class="card"><h4>Comment attirer des clients ?</h4><div class="small muted">Les apports dépendent de la réputation, de la confiance, de la performance sur 26 semaines (vs. objectifs), des Sales et du CRM. Les clients sous-performés ou exposés à un risque supérieur à leur tolérance retirent leurs fonds une fois le lock-up passé. Une conformité &lt; 50 fait fuir tout le monde.</div></div>
       </div>
+      ${this.clientSection()}
+      ${this.rivalSection()}
       ${this.satSection()}
       <h3 class="mt">Par type de client</h3>
       <div class="tablewrap"><table class="t"><thead><tr><th>Type</th><th>Clients</th><th>Capital</th><th>Confiance</th><th>Objectif</th><th>Tolérance risque</th><th>Lock-up</th></tr></thead><tbody>${byType}</tbody></table></div>
@@ -3624,6 +3997,25 @@ const UI = {
       <div class="tablewrap"><table class="t"><thead><tr><th>Client</th><th>Capital</th><th>Confiance</th><th>Objectif</th><th>Tolérance</th><th>Lock-up</th></tr></thead><tbody>${top || '<tr><td colspan="6" class="muted">Aucun client pour le moment.</td></tr>'}</tbody></table></div>`;
   },
 
+  clientSection() {
+    if (!S.prop.launched) return '';
+    const big = Investors.bigClients();
+    const notices = Investors.clients().filter(i => i.notice);
+    const rows = notices.concat(big.filter(b => !b.notice)).map(i => `<tr><td>${INVESTOR_TYPES[i.type].icon} ${esc(i.name)}</td><td class="num">${fmtMoney(Investors.capital(i))}</td>
+      <td class="num ${i.conf < 30 ? 'red' : i.conf < 50 ? 'amber' : 'green'}">${Math.round(i.conf)}</td>
+      <td>${i.notice ? `<span class="pill r">${gl('Préavis de retrait', 'préavis')} : ${Math.max(0, i.notice - S.week)} sem.</span> <button class="btn small" data-act="retain" data-id="${i.id}">Retenir (${fmtMoney(Investors.capital(i) * 0.01)})</button>` : `<span class="muted small">${S.week < i.lockupUntil ? gl('Lock-up', 'lock-up') + ' ' + (i.lockupUntil - S.week) + ' sem.' : 'libre'}</span>`}</td></tr>`).join('');
+    return `<h3 class="mt">🤝 Relation client (grands comptes)</h3>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Client</th><th>Capital</th><th>Confiance</th><th>Statut</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">Pas encore de grand compte (HNWI et au-delà).</td></tr>'}</tbody></table></div>
+      <div class="small muted">Sous 15 de confiance, un grand client envoie un préavis de 4 semaines avant de tout retirer : un geste commercial (1 % de son capital) peut le retenir.</div>`;
+  },
+  rivalSection() {
+    if (!S.rivals.length) return '';
+    const t = Rivals.table(), rk = Rivals.rank();
+    return `<h3 class="mt">🏆 Classement des fonds (performance sur 1 an)</h3>
+      <div class="tablewrap"><table class="t"><thead><tr><th>#</th><th>Fonds</th><th>Style</th><th>Perf. 1 an</th></tr></thead><tbody>
+      ${t.map((r, i) => `<tr class="${r.me ? 'cur' : ''}"><td>${i + 1}</td><td>${r.icon} ${esc(r.name)}</td><td>${r.style}</td><td class="num ${cls(r.perf)}">${fmtPct(r.perf, 1, true)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="small muted">${rk ? `Vous êtes ${rk}${rk === 1 ? 'er' : 'e'}. ` : ''}Top 3 : +15 % d'attractivité auprès des clients ; dernier : −10 % (après 6 mois d'historique).</div>`;
+  },
   satSection() {
     if (!S.prop.launched) return '';
     const rows = S.satellites.map(x => { const T = SAT_TYPES[x.type]; return `<tr><td>${T.icon} ${T.name}</td><td class="num">${fmtMoney(x.aum)}</td><td class="num ${cls(Satellites.perf(x))}">${fmtPct(Satellites.perf(x), 1, true)}</td><td class="num">${Math.round(x.conf)}</td><td class="num">${fmtPct(T.objective, 0)}</td><td class="num ${cls(x.lastFlow)}">${fmtMoney(x.lastFlow)}</td><td><button class="btn small danger" data-act="sat-close" data-id="${x.id}">Fermer</button></td></tr>`; }).join('');
@@ -3654,7 +4046,14 @@ const UI = {
       const n = i + 1, next = TIERS[i + 1];
       return `<tr class="${n === S.tier ? 'cur' : ''}"><td>${n}</td><td>${T.icon} ${T.name}</td><td class="num">${fmtMoney(T.min)}${next ? ' – ' + fmtMoney(next.min) : ' +'}</td><td>${T.local}</td><td class="num">${T.cap === Infinity ? '∞' : fmtNum(T.cap)}</td><td>${T.bonusTxt}</td><td>${T.unlocks}</td></tr>`;
     }).join('');
-    return `<div class="grid g4">${cards}</div>
+    const bank = `<div class="card ${Bank.available() ? '' : 'locked'}"><b>🏦 Activité bancaire</b>
+      <div class="small muted" style="margin:6px 0">Placez la trésorerie de la société dans une banque : ~8 %/an en temps normal, mais des pertes sur crédits en crise (−20 %/an). Exige une conformité ≥ 70.</div>
+      ${Bank.available() ? `<div class="kv small"><span class="muted">Capital</span><b class="num">${fmtMoney(S.bank.capital)}</b></div><div class="kv small"><span class="muted">Résultat/sem</span><span class="num ${cls(S.bank.lastPnl)}">${fmtMoney(S.bank.lastPnl)}</span></div>
+        <div class="row mt"><button class="btn small" data-act="bank-in" data-f="0.25">Apporter 25 % du cash</button><button class="btn small" data-act="bank-out" data-f="0.5" ${S.bank.capital > 0 ? '' : 'disabled'}>Retirer 50 %</button></div>` : '<span class="pill a">🔒 Palier 12</span>'}</div>`;
+    const prest = `<div class="card ${S.tier >= 15 ? '' : 'locked'}"><b>🌌 Prestige</b>
+      <div class="small muted" style="margin:6px 0">Recommencez une partie avec des bonus permanents : réputation de départ +5 et clients +10 % par niveau (jusqu'à 3). Prestige actuel : ${S.prestige || 0}.</div>
+      ${S.tier >= 15 ? '<button class="btn small primary" data-act="prestige">Passer au prestige</button>' : '<span class="pill a">🔒 Palier 15</span>'}</div>`;
+    return `<div class="grid g4">${cards}${bank}${prest}</div>
       <h3 class="mt">Feuille de route des locaux</h3>
       <div class="small muted">Le fonds déménage automatiquement dès que l'AUM atteint le seuil du palier suivant. Pas de retour en arrière (sauf en hard mode).</div>
       <div class="tablewrap mt"><table class="t"><thead><tr><th>#</th><th>Palier</th><th>Seuil AUM</th><th>Local</th><th>Capacité</th><th>Bonus</th><th>Déblocages</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -3735,11 +4134,11 @@ const UI = {
 
     return `<div class="card"><h4>Comment lire cet onglet ?</h4><div class="small muted">Chaque actif réagit à quatre <b>facteurs communs</b> : Marché, Taux, Pétrole/matières et Spéculation. Les barres de sensibilité montrent ces réactions (vert = monte avec le facteur, rouge = baisse quand il monte). Deux actifs sensibles aux mêmes facteurs sont corrélés. Les données avancées se débloquent avec la data premium, le moteur de risque et les quants.</div></div>
       <h3 class="mt">📊 Statistiques par actif</h3>
-      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th><th>4 sem.</th><th>13 sem.</th><th>52 sem.</th><th>Vol. 1 an</th><th>Pire baisse</th><th>Sharpe</th><th>Bêta</th><th>Sensib. M · R · O · S</th></tr></thead><tbody>${statRows}</tbody></table></div>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th><th>4 sem.</th><th>13 sem.</th><th>52 sem.</th><th>Vol. 1 an</th><th>Pire baisse</th><th>${gl('Sharpe')}</th><th>${gl('Bêta')}</th><th>Sensib. M · R · O · S</th></tr></thead><tbody>${statRows}</tbody></table></div>
       <h3 class="mt">🧭 Performance moyenne par régime (rendement hebdomadaire moyen × 52, observé pendant votre partie)</h3>
       <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th>${regN}</tr></thead><tbody>${regRows}</tbody></table></div>
-      <div class="grid g2 mt"><div class="card"><h4>🌡️ Carte des corrélations</h4>${heat}</div><div class="card"><h4>🧩 Contribution au risque</h4>${risk}</div></div>
-      <div class="card mt"><h4>🎯 Frontière efficiente</h4>${front}</div>`;
+      <div class="grid g2 mt"><div class="card"><h4>🌡️ Carte des ${gl('Corrélation', 'corrélations')}</h4>${heat}</div><div class="card"><h4>🧩 Contribution au risque</h4>${risk}</div></div>
+      <div class="card mt"><h4>🎯 ${gl('Frontière efficiente')}</h4>${front}</div>`;
   },
 
   /* ---------- Onglet Journal ---------- */
@@ -3909,6 +4308,28 @@ const UI = {
       ${r.decisions.length ? `<h4 class="mt">Décisions du trimestre</h4>${r.decisions.map(d => `<div class="small">• ${esc(d)}</div>`).join('')}` : ''}
       <div class="row mt"><button class="btn primary" data-modal="close">Continuer</button></div>`);
   },
+  showGlossary(focus) {
+    const items = Object.entries(GLOSSARY).sort((a, b) => a[0].localeCompare(b[0], 'fr')).map(([t, d]) => `<div class="kv" style="display:block;${t === focus ? 'background:rgba(255,255,255,.06);border-radius:6px;padding:6px' : ''}"><b>${t}</b><div class="small muted">${d}</div></div>`).join('');
+    this.showModal(`<h2>📖 Glossaire</h2><div class="small muted">Les termes soulignés en pointillés dans le jeu renvoient ici.</div><div class="mt">${items}</div><div class="row mt"><button class="btn" data-modal="close">Fermer</button></div>`);
+  },
+  showSlots() {
+    const rows = [1, 2, 3].map(n => { const i = Save.info(n);
+      return `<div class="card" style="margin-top:6px"><div class="row between"><b>Emplacement ${n}${Save.slot === n && S ? ' (partie en cours)' : ''}</b>
+        <span class="small muted">${i ? `${esc(i.name)} · ${CONFIG.MODES[i.difficulty] ? CONFIG.MODES[i.difficulty].label : ''} · sem. ${i.week} · AUM ${fmtMoney(i.aum)} · palier ${i.tier}` : 'vide'}</span></div>
+        <div class="row mt">${i ? `<button class="btn small" data-modal="load${n}">📂 Charger</button>` : ''}${S ? `<button class="btn small" data-modal="save${n}">💾 Sauvegarder ici</button>` : ''}${i ? `<button class="btn small danger" data-modal="del${n}">Effacer</button>` : ''}</div></div>`; }).join('');
+    const h = { close: () => this.closeModal() };
+    [1, 2, 3].forEach(n => {
+      h['load' + n] = () => { if (Save.load(n)) { this.closeModal(); this.afterLoad(); } };
+      h['save' + n] = () => { Save.slot = n; Save.save(false); this.showSlots(); };
+      h['del' + n] = () => { Save.clear(n); this.showSlots(); };
+    });
+    h.exp = () => Save.exportFile();
+    h.imp = () => this.$('importFile').click();
+    this.showModal(`<h2>💾 Sauvegardes</h2>${rows}
+      <div class="row mt">${S ? '<button class="btn" data-modal="exp">⬇️ Exporter la partie (fichier)</button>' : ''}<button class="btn" data-modal="imp">⬆️ Importer un fichier</button><input type="file" id="importFile" accept=".json,application/json" hidden></div>
+      <div class="row mt"><button class="btn" data-modal="close">Fermer</button></div>`, h);
+    this.$('importFile').addEventListener('change', ev => { const f = ev.target.files[0]; if (f) Save.importFile(f); });
+  },
   showVictory() {
     this.showModal(`<div class="icon">🏆</div><h2>Victoire !</h2>
       <p>« ${esc(S.fundName)} » gère <b>${fmtMoney(Portfolio.aum())}</b> avec une réputation de <b>${Math.round(S.reputation)}/100</b> après ${S.week} semaines. Vous êtes une légende de la gestion alternative.</p>
@@ -3943,16 +4364,19 @@ const UI = {
         <label><input type="radio" name="diff" value="intermediate"><b>Intermédiaire</b><div class="small muted">Levier, short, stop-loss, devises… événements plus durs, conformité stricte, clients exigeants.</div></label>
       </div>
       <label class="row"><input type="checkbox" id="tutChk" ${l.runs ? '' : 'checked'}> 🎓 Tutoriel guidé pendant la phase prop firm</label>
-      <div class="row mt">${hasSave ? '<button class="btn primary" data-modal="cont">▶ Continuer la partie sauvegardée</button>' : ''}<button class="btn ${hasSave ? '' : 'primary'}" data-modal="new">✨ Nouvelle partie</button></div>
+      <div class="row"><span class="small muted">Emplacement</span><select id="slotSel">${[1, 2, 3].map(n => { const i = Save.info(n); return `<option value="${n}" ${n === Save.firstFree() ? 'selected' : ''}>${n} — ${i ? esc(i.name) + ', sem. ' + i.week + ' (sera écrasé)' : 'vide'}</option>`; }).join('')}</select></div>
+      <div class="row mt">${hasSave ? '<button class="btn primary" data-modal="cont">▶ Continuer la dernière partie</button>' : ''}<button class="btn ${hasSave ? '' : 'primary'}" data-modal="new">✨ Nouvelle partie</button>${hasSave ? '<button class="btn" data-modal="slots">📂 Autres sauvegardes / import</button>' : '<button class="btn" data-modal="slots">⬆️ Importer</button>'}</div>
       <p class="small muted mt">Astuce : la barre d'espace fait passer une semaine. Un tick = une semaine.</p>`,
       {
-        cont: () => { if (Save.load()) { this.closeModal(); this.afterLoad(); } },
+        cont: () => { if (Save.load(Save.lastSlot())) { this.closeModal(); this.afterLoad(); } },
+        slots: () => this.showSlots(),
         new: () => {
           const d = document.querySelector('input[name=diff]:checked')?.value || 'casual';
           const name = (this.$('fundNameIn')?.value || '').trim() || 'Phoenix Capital';
           const tut = !!this.$('tutChk')?.checked;
-          const go = () => { this.closeModal(); Game.newGame(d, name, tut); this.afterLoad(); Save.save(true); };
-          if (hasSave) this.confirm('Nouvelle partie ?', 'La sauvegarde existante sera écrasée.', go); else go();
+          const slot = Number(this.$('slotSel')?.value) || 1;
+          const go = () => { this.closeModal(); Save.slot = slot; Game.newGame(d, name, tut); this.afterLoad(); Save.save(true); };
+          if (Save.info(slot)) this.confirm('Nouvelle partie ?', `L'emplacement ${slot} sera écrasé.`, go); else go();
         }
       }, false);
   },
@@ -3982,7 +4406,7 @@ const UI = {
       <label class="row"><input type="checkbox" id="hardChk" ${S.hardMode ? 'checked' : ''}> Hard mode : rétrogradation de palier si l'AUM tombe sous 50 % du seuil</label>
       <div class="row mt"><span>Vitesse de l'avance auto</span><select id="speedSel">${Object.keys(speeds).map(k => `<option value="${k}" ${(this.autoSpeed || 'normal') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
       <h4 class="mt">Partie</h4>
-      <div class="row"><button class="btn" data-modal="save">💾 Sauvegarder</button><button class="btn" data-modal="load">📂 Charger</button><button class="btn danger" data-modal="reset">🗑️ Recommencer (reset)</button></div>
+      <div class="row"><button class="btn" data-modal="save">💾 Sauvegarder</button><button class="btn" data-modal="load">📂 Emplacements, export / import</button><button class="btn danger" data-modal="reset">🗑️ Recommencer (reset)</button></div>
       <div class="row mt"><button class="btn primary" data-modal="apply">Appliquer</button><button class="btn" data-modal="close">Fermer</button></div>`,
       {
         apply: () => {
@@ -3998,7 +4422,7 @@ const UI = {
           this.renderAll();
         },
         save: () => Save.save(false),
-        load: () => { this.closeModal(); if (Save.load()) this.afterLoad(); },
+        load: () => this.showSlots(),
         reset: () => this.confirm('Recommencer ?', 'La partie en cours et sa sauvegarde seront effacées (le bonus legacy est conservé).', () => { Save.clear(); this.showStart(false); })
       });
   },
@@ -4030,7 +4454,7 @@ function boot() {
 document.addEventListener('DOMContentLoaded', boot);
 
 /* Accès console / tests automatisés */
-window.HFT = { get S() { return S; }, Tutorial, Analysis, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
+window.HFT = { get S() { return S; }, Bench, Calendar, Hedges, Rivals, Bank, Prestige, Tutorial, Analysis, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" async onload="UI.onChartLoaded()" onerror="UI.onChartFailed()"></script>
 </body>
