@@ -667,7 +667,8 @@ function createState(difficulty, fundName, legacy) {
     upgrades: {},
     events: { nextWeek: 4, pending: null, last: {}, flags: {}, queue: [] },
     strategy: null,                         // stratégie choisie au lancement du fonds
-    bench: { value: 100, bal: 100, hist: [100] }, // indice 60/40 et portefeuille « Équilibré » de comparaison
+    // bench : indice de référence (défini au choix de la stratégie) ; bal : préréglage « Équilibré » de comparaison
+    bench: { def: null, value: 100, startNav: 100, startWeek: 0, bal: 100, hist: [] },
     regimeStat: null,                       // suivi du régime en cours (bilan de fin de régime)
     quarter: null, goal: null, goalStreak: 0, goalsDone: 0, quarterN: 0, lastReport: null, showReports: true,
     opps: [], nextOppWeek: 0,               // opportunités ponctuelles
@@ -815,7 +816,7 @@ const Market = {
     if (!silent) {
       if (prev) Game.regimeReport(prev);
       const r = m.lastReturns;
-      S.bench.value *= 1 + 0.6 * r.equities + 0.4 * r.bonds;   // indice de référence 60/40
+      if (S.bench.def) S.bench.value *= 1 + Bench.weekReturn(r);   // indice de référence de la stratégie
       S.bench.bal *= 1 + 0.5 * r.equities + 0.35 * r.bonds;    // préréglage Équilibré (15 % cash)
     }
     // Décrément des modificateurs temporaires (événements)
@@ -1906,6 +1907,25 @@ const STRATEGIES = {
   crypto:   { name: 'Actifs numériques', icon: '🪙', desc: 'Crypto débloquée dès le lancement, alpha crypto +4 %/an, particuliers +40 %. Conformité −8.', b: { cryptoEarly: 1, alphaCrypto: 0.04, retail: 0.4, compliance: -8 } },
   activist: { name: 'Activiste / situations spéciales', icon: '🦈', desc: 'Opportunités 50 % plus fréquentes et plus sûres, réputation +20 % plus rapide. Conformité −4.', b: { oppFreq: 0.5, oppP: 0.08, repGain: 0.2, compliance: -4 } }
 };
+/* Indice de référence selon la stratégie (w : poids des actifs ; cash : rendement annuel fixe) */
+const BENCHMARKS = {
+  longonly: { name: 'Indice actions monde', w: { equities: 1 } },
+  macro:    { name: 'Indice multi-actifs (40 actions / 40 oblig. / 10 matières / 10 devises)', w: { equities: 0.4, bonds: 0.4, commodities: 0.1, fx: 0.1 } },
+  quant:    { name: 'Monétaire + 4 % (objectif de performance absolue)', cash: 0.04 },
+  crypto:   { name: 'Indice actifs numériques (70 % crypto / 30 % tech)', w: { crypto: 0.7, tech: 0.3 } },
+  activist: { name: 'Indice actions « value » (monde, industrie, finance)', w: { equities: 0.6, industrials: 0.2, finance: 0.2 } },
+  default:  { name: 'Indice 60/40', w: { equities: 0.6, bonds: 0.4 } }
+};
+const Bench = {
+  def() { return S.bench.def ? BENCHMARKS[S.bench.def] : null; },
+  name() { const d = this.def(); return d ? d.name : '—'; },
+  weekReturn(r) { const d = this.def(); if (!d) return 0; if (d.cash !== undefined) return d.cash / 52; let x = 0; for (const k in d.w) x += d.w[k] * (r[k] || 0); return x; },
+  /* Démarre l'indice au lancement (rebasé sur la NAV du fonds à cette date) */
+  start(id) { S.bench.def = BENCHMARKS[id] ? id : 'default'; S.bench.value = 100; S.bench.startNav = S.fund.navps; S.bench.startWeek = S.week; S.bench.hist = [100];
+    Game.log(`📏 Indice de référence : ${this.name()}.`, 'info'); },
+  you() { return S.fund.navps / S.bench.startNav - 1; },
+  idx() { return S.bench.value / 100 - 1; }
+};
 const Strat = { b(key) { const st = S && S.strategy && STRATEGIES[S.strategy]; return st ? (st.b[key] || 0) : 0; } };
 
 const EVENTS = [
@@ -2277,8 +2297,8 @@ const EVENTS = [
     cond: () => false, cooldown: 0, weight: () => 0,
     prepare() { return {}; },
     text: () => `Vos premiers clients veulent savoir comment vous allez gérer leur argent. Ce choix est définitif : il modifie vos bonus, les clients attirés et les opportunités.`,
-    options: Object.entries(STRATEGIES).map(([id, st]) => ({ label: `${st.icon} ${st.name}`, hint: () => st.desc,
-      apply() { S.strategy = id; Team.invalidate(); Game.log(`🧭 Stratégie du fonds : ${st.icon} ${st.name}.`, 'tier'); } }))
+    options: Object.entries(STRATEGIES).map(([id, st]) => ({ label: `${st.icon} ${st.name}`, hint: () => `${st.desc} Indice de référence : ${BENCHMARKS[id].name}.`,
+      apply() { S.strategy = id; Bench.start(id); Team.invalidate(); Game.log(`🧭 Stratégie du fonds : ${st.icon} ${st.name}.`, 'tier'); } }))
   },
   {
     id: 'm_press', icon: '📰', title: 'Jalon : portrait dans la presse financière',
@@ -2407,7 +2427,7 @@ const Events = {
 
 /* --- Objectifs et rapport trimestriels (après le lancement du fonds) --- */
 const GOALS = [
-  { id: 'beat', text: () => "Battre l'indice de référence (60/40)", live: q => q.ret - q.benchRet, ok: q => q.ret >= q.benchRet, fmt: v => fmtPct(v, 1, true) + ' vs indice' },
+  { id: 'beat', text: () => `Battre l'indice de référence (${Bench.name()})`, live: q => q.ret - q.benchRet, ok: q => q.ret >= q.benchRet, fmt: v => fmtPct(v, 1, true) + ' vs indice' },
   { id: 'ret', gen: () => ({ x: pick([0.02, 0.03, 0.04]) }), text: p => `Rendement trimestriel ≥ ${fmtPct(p.x, 0, true)}`, live: q => q.ret, ok: (q, p) => q.ret >= p.x, fmt: v => fmtPct(v, 1, true) },
   { id: 'dd', gen: () => ({ x: pick([0.05, 0.08]) }), text: p => `Drawdown du trimestre ≤ ${fmtPct(p.x, 0)}`, live: q => q.maxDD, ok: (q, p) => q.maxDD <= p.x, fmt: v => fmtPct(v, 1) + ' de drawdown' },
   { id: 'flows', text: () => 'Flux nets de clients positifs', live: q => q.subs - q.reds, ok: q => q.subs >= q.reds, fmt: v => fmtMoney(v) + ' nets' },
@@ -2416,7 +2436,7 @@ const GOALS = [
 const Quarter = {
   goalDef() { return S.goal && GOALS.find(g => g.id === S.goal.id); },
   start() {
-    const g = pick(GOALS);
+    const g = pick(GOALS.filter(x => x.id !== 'beat' || S.bench.def));
     S.goal = { id: g.id, p: g.gen ? g.gen() : {}, reward: 8 * U() };
     S.quarter = { start: S.week, nav: S.fund.navps, bench: S.bench.value, aum: Game.totalAUM(), cash: S.cash, peak: S.fund.navps, maxDD: 0,
       subs: 0, reds: 0, mgmt: 0, perf: 0, sal: 0, risk: 0, n: 0, mc: S.counters.marginCalls, pnl: {}, regimes: [], decisions: [] };
@@ -2446,7 +2466,7 @@ const Quarter = {
     const pnl = Object.entries(q.pnl).filter(([, v]) => Math.abs(v) > 1e-9).sort((a, b) => b[1] - a[1]);
     const name = k => k === 'opps' ? 'Opportunités' : CONFIG.ASSETS[k].name;
     S.lastReport = {
-      n: S.quarterN, week: S.week, ret: L.ret, benchRet: L.benchRet, aum0: q.aum, aum1: Game.totalAUM(), subs: q.subs, reds: q.reds,
+      n: S.quarterN, week: S.week, ret: L.ret, benchRet: L.benchRet, benchName: Bench.name(), aum0: q.aum, aum1: Game.totalAUM(), subs: q.subs, reds: q.reds,
       fees: q.mgmt + q.perf, sal: q.sal, maxDD: q.maxDD, goal: g.text(S.goal.p), ok, reward: S.goal.reward, streak: S.goalStreak,
       best: pnl.length ? [name(pnl[0][0]), pnl[0][1]] : null, worst: pnl.length > 1 ? [name(pnl[pnl.length - 1][0]), pnl[pnl.length - 1][1]] : null,
       regimes: q.regimes, decisions: q.decisions.slice(-6)
@@ -2463,7 +2483,7 @@ const ACHIEVEMENTS = [
   { id: 'prop_first', icon: '🎯', name: 'Du premier coup', desc: 'Réussir le challenge prop firm à la première tentative', test: s => s.prop.passes >= 1 && s.prop.attempts === 1 },
   { id: 'launch', icon: '🚀', name: 'Gérant indépendant', desc: 'Lancer votre fonds', test: s => s.prop.launched },
   { id: 'crisis', icon: '🔥', name: 'Sang-froid', desc: 'Traverser une crise complète sans margin call', test: s => !!s.events.flags.crisisSurvived },
-  { id: 'bench52', icon: '🏁', name: 'Alpha prouvé', desc: "Battre l'indice de référence sur 52 semaines", test: s => s.prop.launched && s.fund.navHist.length > 52 && s.bench.hist.length > 52 &&
+  { id: 'bench52', icon: '🏁', name: 'Alpha prouvé', desc: "Battre l'indice de référence sur 52 semaines", test: s => s.bench.def && s.fund.navHist.length > 52 && s.bench.hist.length > 52 &&
       s.fund.navHist[s.fund.navHist.length - 1] / s.fund.navHist[s.fund.navHist.length - 53] > s.bench.hist[s.bench.hist.length - 1] / s.bench.hist[s.bench.hist.length - 53] },
   { id: 'solo3', icon: '🧍', name: 'Loup solitaire', desc: 'Atteindre le palier 3 sans jamais avoir recruté', test: s => s.tier >= 3 && !s.events.flags.everHired },
   { id: 'streak4', icon: '📅', name: 'Régularité', desc: "Réussir 4 objectifs trimestriels d'affilée", test: s => s.goalStreak >= 4 },
@@ -2909,9 +2929,9 @@ const Game = {
 
   recordHistory() {
     const h = S.history;
-    h.week.push(S.week); h.navps.push(S.fund.navps); h.aum.push(this.totalAUM()); h.bench.push(S.bench.value);
-    S.bench.hist.push(S.bench.value);
-    if (S.bench.hist.length > 120) S.bench.hist.shift();
+    h.week.push(S.week); h.navps.push(S.fund.navps); h.aum.push(this.totalAUM());
+    h.bench.push(S.bench.def ? S.bench.value * S.bench.startNav / 100 : null);   // rebasé sur la NAV au lancement
+    if (S.bench.def) { S.bench.hist.push(S.bench.value); if (S.bench.hist.length > 120) S.bench.hist.shift(); }
     if (h.week.length > 700) { // sous-échantillonnage de la moitié la plus ancienne
       const half = 350;
       for (const key of ['week', 'navps', 'aum', 'bench']) h[key] = h[key].slice(0, half).filter((_, i) => i % 2 === 0).concat(h[key].slice(half));
@@ -2991,7 +3011,8 @@ const Save = {
       S = deepMerge(fresh, data);
       if (!data.prop) { S.prop.launched = true; S.prop.phase = 'off'; } // sauvegarde antérieure à la prop firm
       const hb = S.history.bench, hw = S.history.week.length;
-      if (hb.length < hw) S.history.bench = Array(hw - hb.length).fill(100).concat(hb);
+      if (hb.length < hw) S.history.bench = Array(hw - hb.length).fill(null).concat(hb);
+      if (S.prop.launched && !S.bench.def) { Bench.start(S.strategy || 'default'); S.history.bench = S.history.bench.map(() => null); }
       if (S.prop.launched && !S.strategy && !S.events.pending) S.events.queue = ['fund_strategy'];
       RNG.seed = (S.seed >>> 0) || RNG.seed;
       Team.invalidate();
@@ -3210,8 +3231,10 @@ const UI = {
   /* Bandeau : indice de référence + objectif du trimestre */
   renderGoalBar() {
     const el = this.$('goalBar');
-    const you = S.fund.navps / CONFIG.START_NAVPS - 1, idx = S.bench.value / 100 - 1;
-    let html = `<div>📊 <b>Vous vs indice 60/40</b> (depuis le début) : <span class="num ${cls(you)}">${fmtPct(you, 1, true)}</span> vs <span class="num ${cls(idx)}">${fmtPct(idx, 1, true)}</span> <span class="pill ${you >= idx ? 'g' : 'r'}">${you >= idx ? 'devant' : 'derrière'} de ${fmtPct(Math.abs(you - idx), 1)}</span></div>`;
+    let html;
+    if (!S.bench.def) html = `<div class="muted">📊 Indice de référence : défini au lancement du fonds, selon la stratégie choisie.</div>`;
+    else { const you = Bench.you(), idx = Bench.idx();
+    html = `<div>📊 <b>Vous vs ${Bench.name()}</b> (depuis le lancement) : <span class="num ${cls(you)}">${fmtPct(you, 1, true)}</span> vs <span class="num ${cls(idx)}">${fmtPct(idx, 1, true)}</span> <span class="pill ${you >= idx ? 'g' : 'r'}">${you >= idx ? 'devant' : 'derrière'} de ${fmtPct(Math.abs(you - idx), 1)}</span></div>`; }
     if (S.prop.launched && S.goal && S.quarter) {
       const g = Quarter.goalDef(), L = Quarter.live(), ok = g.ok(L, S.goal.p);
       html += `<div>🎯 <b>Objectif du trimestre :</b> ${g.text(S.goal.p)} — <span class="${ok ? 'green' : 'amber'}">${ok ? '✅ en bonne voie' : '⏳ pas encore'}</span> (${g.fmt(g.live(L))}) · ${Math.max(0, 13 - (S.week - S.quarter.start))} sem. restantes · prime ${fmtMoney(S.goal.reward)} · série ${S.goalStreak}</div>`;
@@ -3276,7 +3299,8 @@ const UI = {
       const ks = RISKY.filter(k => CONFIG.ASSETS[k].group === g && Market.isUnlocked(k)).concat(g === 'obligations' ? ['cash'] : []);
       return ks.length ? `<h3 class="mt">${label}</h3><div class="grid g4">${ks.map(card).join('')}</div>` : '';
     }).join('') + (locked.length ? `<div class="small muted mt">🔒 À débloquer : ${locked.map(k => `${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name} (palier ${CONFIG.ASSETS[k].tier})`).join(' · ')}</div>` : '');
-    const mods = m.mods.length ? m.mods.map(md => `<span class="pill ${md.mu > 0 ? 'g' : 'r'}">${md.k === 'all' ? 'Tous' : CONFIG.ASSETS[md.k].name} ${fmtPct(md.mu, 0, true)}/an · ${md.weeks} sem.</span>`).join(' ') : '<span class="muted small">Aucun</span>';
+    const topMods = m.mods.slice().sort((x, y) => Math.abs(y.mu) - Math.abs(x.mu)).slice(0, 6);
+    const mods = m.mods.length ? topMods.map(md => `<span class="pill ${md.mu > 0 ? 'g' : 'r'}">${md.k === 'all' ? 'Tous' : CONFIG.ASSETS[md.k].name} ${fmtPct(md.mu, 0, true)}/an · ${md.weeks} sem.</span>`).join(' ') + (m.mods.length > 6 ? ` <span class="muted small">+${m.mods.length - 6} autres</span>` : '') : '<span class="muted small">Aucun</span>';
     return `
       <div class="grid g3">
         <div class="card"><h4>Régime de marché (estimé)</h4><div style="font-size:22px;font-weight:700">${R.icon} ${R.name}</div>
@@ -3685,7 +3709,7 @@ const UI = {
             data: { labels, datasets: [
               { label: 'NAV / part', data: h.navps.slice(), borderColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d9a066', borderWidth: 2, pointRadius: 0, tension: 0.15, yAxisID: 'y' },
               { label: 'AUM', data: h.aum.map(v => v > 0 ? v : null), borderColor: '#60a5fa', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.15, yAxisID: 'y1', spanGaps: true },
-              { label: 'Indice 60/40', data: h.bench.slice(), borderColor: '#8b95a8', borderWidth: 1.2, pointRadius: 0, tension: 0.15, yAxisID: 'y', spanGaps: true }
+              { label: 'Indice de référence', data: h.bench.slice(), borderColor: '#8b95a8', borderWidth: 1.2, pointRadius: 0, tension: 0.15, yAxisID: 'y', spanGaps: true }
             ] },
             options: {
               responsive: true, maintainAspectRatio: false, animation: false,
@@ -3729,7 +3753,7 @@ const UI = {
     ctx.clearRect(0, 0, W, H);
     const d = S.history.navps, b = S.history.bench;
     if (d.length < 2) return;
-    const all = b.length === d.length ? d.concat(b) : d;
+    const all = b.length === d.length ? d.concat(b.filter(v => v !== null)) : d;
     const min = Math.min(...all), max = Math.max(...all), rg = max - min || 1;
     ctx.strokeStyle = 'rgba(255,255,255,.08)';
     for (let i = 0; i <= 4; i++) { const y = 10 + i * (H - 20) / 4; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W, y); ctx.stroke(); }
@@ -3737,7 +3761,8 @@ const UI = {
     ctx.fillText(fmtNum(max, 1), 2, 14); ctx.fillText(fmtNum(min, 1), 2, H - 6);
     if (b.length === d.length) {
       ctx.strokeStyle = '#8b95a8'; ctx.lineWidth = 1; ctx.beginPath();
-      b.forEach((v, i) => { const y = 10 + (1 - (v - min) / rg) * (H - 20); const x = 40 + i / (b.length - 1) * (W - 44); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      let started = false;
+      b.forEach((v, i) => { if (v === null) return; const y = 10 + (1 - (v - min) / rg) * (H - 20); const x = 40 + i / (b.length - 1) * (W - 44); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; });
       ctx.stroke();
     }
     ctx.strokeStyle = TIERS[S.tier - 1].accent; ctx.lineWidth = 2; ctx.beginPath();
@@ -3806,7 +3831,7 @@ const UI = {
     const kv = (a, b) => `<div class="kv"><span class="muted">${a}</span><span class="num">${b}</span></div>`;
     this.showModal(`<div class="icon">📄</div><h2>Rapport trimestriel n°${r.n}</h2>
       ${kv('Performance du fonds', `<span class="${cls(r.ret)}">${fmtPct(r.ret, 1, true)}</span>`)}
-      ${kv('Indice de référence 60/40', `<span class="${cls(r.benchRet)}">${fmtPct(r.benchRet, 1, true)}</span> → ${r.ret >= r.benchRet ? '<span class="green">battu</span>' : '<span class="red">non battu</span>'}`)}
+      ${kv('Indice : ' + (r.benchName || 'référence'), `<span class="${cls(r.benchRet)}">${fmtPct(r.benchRet, 1, true)}</span> → ${r.ret >= r.benchRet ? '<span class="green">battu</span>' : '<span class="red">non battu</span>'}`)}
       ${kv('AUM', `${fmtMoney(r.aum0)} → ${fmtMoney(r.aum1)}`)}
       ${kv('Souscriptions / rachats', `<span class="green">+${fmtMoney(r.subs)}</span> / <span class="red">−${fmtMoney(r.reds)}</span>`)}
       ${kv('Frais encaissés / salaires', `${fmtMoney(r.fees)} / ${fmtMoney(r.sal)}`)}
