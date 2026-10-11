@@ -230,7 +230,8 @@
 
   /* Fondu au noir lors d'un déménagement */
   #fade { position: fixed; inset: 0; background: #000; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .9s ease; display: flex; align-items: center; justify-content: center; flex-direction: column; color: #fff; text-align: center; }
-  #fade.show { opacity: 1; pointer-events: all; }
+  #fade:not(.show) { visibility: hidden; transition: opacity .9s ease, visibility 0s linear .9s; }
+  #fade.show { opacity: 1; pointer-events: all; visibility: visible; }
   #fade .big { font-size: 90px; }
   #fade .ttl { font-size: 26px; font-weight: 700; margin-top: 10px; }
 
@@ -321,6 +322,49 @@
   body[data-theme="journal"] table.t tr.cur td { background: rgba(122,31,43,.07); }
   body[data-theme="journal"] select, body[data-theme="journal"] input[type=text] { background: #fffdf8; color: var(--text); }
   body[data-theme="journal"] .lockbox { border-color: var(--border); }
+
+  /* =====================================================================
+     ACCESSIBILITÉ (tous thèmes) + finalisation du thème Terminal
+     ===================================================================== */
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  html[data-size="large"] { zoom: 1.15; }
+  html[data-size="xlarge"] { zoom: 1.3; }
+  body[data-cb] { --green: #4fc3f7 !important; --red: #ff9e40 !important; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+  @media (max-width: 760px) { .btn { min-height: 44px; } .btn.small { min-height: 40px; } .tab { min-height: 44px; } }
+  /* Terminal : tailles minimales et majuscules réservées aux titres courts */
+  body[data-theme="terminal"] { font-size: 14px; line-height: 1.45; }
+  body[data-theme="terminal"] .small, body[data-theme="terminal"] .stat .sub, body[data-theme="terminal"] .pill { font-size: 13px; }
+  body[data-theme="terminal"] .stat .lab { font-size: 12.5px; letter-spacing: .04em; }
+  body[data-theme="terminal"] .btn { text-transform: none; letter-spacing: 0; font-size: 13px; border-color: #737373; }
+  body[data-theme="terminal"] .btn.small { font-size: 13px; }
+  body[data-theme="terminal"] .tab { font-size: 13px; }
+  body[data-theme="terminal"] table.t { font-size: 13px; }
+  body[data-theme="terminal"] table.t th { font-size: 12.5px; }
+  body[data-theme="terminal"] .heat { font-size: 11px; }
+  body[data-theme="terminal"] select, body[data-theme="terminal"] input[type=text] { font-size: 13px; border-color: #737373; color: var(--text); }
+  body[data-theme="terminal"] .card { border-color: #333; }
+  body[data-theme="terminal"] .panel { border-color: #3a3a3a; }
+  body[data-theme="terminal"] .locked, body[data-theme="terminal"] .ach .off { opacity: 1; filter: none; color: var(--muted); }
+  body[data-theme="terminal"] .locked b, body[data-theme="terminal"] .ach .off b { color: var(--muted); }
+  body[data-theme="terminal"] .pill.a { background: #1f1a0d; color: var(--amber); }
+  body[data-theme="terminal"] .pill.g { background: #0d1f14; }
+  body[data-theme="terminal"] .pill.r { background: #2a0f0f; }
+  body[data-theme="terminal"] .modal h2 { color: var(--amber); font-size: 18px; text-transform: uppercase; letter-spacing: .06em; }
+  body[data-theme="terminal"] .choice .hint { color: #b5b5b5; font-size: 13px; }
+  body[data-theme="terminal"] .jline { font-size: 13.5px; }
+  body[data-theme="terminal"] .gl { border-bottom-color: #9a9a9a; }
+  /* Mobile : barre de commandes compacte, notifications en haut, tutoriel en bas */
+  @media (max-width: 760px) {
+    .controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 6px; }
+    .controls .btn { padding: 6px 4px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #btnNext { grid-column: 1 / -1; }
+    #toasts { top: 8px; bottom: auto; left: 8px; right: 8px; max-width: none; }
+    #toasts .toast:nth-last-child(n+3) { display: none; }
+    #tutPanel { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 45vh; overflow-y: auto; }
+  }
 </style>
 </head>
 <body>
@@ -340,10 +384,10 @@
       <button id="btnMonth" class="btn" title="Avancer de 4 semaines (s'arrête en cas d'urgence)">⏩ Mois suivant</button>
       <button id="btnSkip" class="btn" title="Avancer jusqu'au prochain fait marquant (événement, régime, rapport, opportunité…)">⏭️ Jusqu'au prochain fait</button>
       <button id="btnAuto" class="btn" title="Avance automatique">⏩ Auto : OFF</button>
-      <button id="btnGloss" class="btn" title="Glossaire">📖</button>
-      <button id="btnSave" class="btn" title="Sauvegarder">💾</button>
-      <button id="btnLoad" class="btn" title="Charger la sauvegarde">📂</button>
-      <button id="btnSettings" class="btn" title="Paramètres">⚙️</button>
+      <button id="btnGloss" class="btn" title="Glossaire" aria-label="Glossaire">📖</button>
+      <button id="btnSave" class="btn" title="Sauvegarder" aria-label="Sauvegarder">💾</button>
+      <button id="btnLoad" class="btn" title="Sauvegardes" aria-label="Sauvegardes">📂</button>
+      <button id="btnSettings" class="btn" title="Paramètres" aria-label="Paramètres">⚙️</button>
     </div>
   </header>
 
@@ -356,18 +400,18 @@
       <h3 style="margin:0" id="chartTitle">Valeur liquidative (NAV par part) &amp; AUM</h3>
       <div id="chartLegend" class="small muted"></div>
     </div>
-    <div class="chartwrap"><canvas id="navChart"></canvas></div>
+    <div class="chartwrap"><canvas id="navChart" role="img" aria-label="Graphique de la valeur liquidative"></canvas></div>
     <div id="chartMsg"></div>
   </section>
 
-  <nav class="tabs" id="tabs"></nav>
-  <main id="tabContent" class="panel"></main>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Sections du jeu"></nav>
+  <main id="tabContent" class="panel" role="tabpanel"></main>
 </div>
 
-<div id="toasts"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
 <div id="tutPanel" hidden></div>
 <div id="modalRoot"></div>
-<div id="fade"><div class="big" id="fadeIcon"></div><div class="ttl" id="fadeTitle"></div><div class="muted" id="fadeSub"></div></div>
+<div id="fade" aria-live="assertive"><div class="big" id="fadeIcon"></div><div class="ttl" id="fadeTitle"></div><div class="muted" id="fadeSub"></div></div>
 
 <script>
 'use strict';
@@ -669,7 +713,8 @@ function fmtShort(x) { // pour axes de graphique
 function fmtPct(x, d = 1, sign = false) {
   if (!isFinite(x)) return '—';
   const v = x * 100;
-  const s = sign && v > 0 ? '+' : (v < 0 ? '−' : '');
+  // Les variations signées portent aussi ▲/▼ : l'information ne repose pas sur la couleur seule
+  const s = sign ? (v > 0 ? '▲+' : v < 0 ? '▼−' : '') : (v < 0 ? '−' : '');
   return s + fmtNum(Math.abs(v), d) + ' %';
 }
 function fmtSigned(x, d = 0) { return (x > 0 ? '+' : x < 0 ? '−' : '') + fmtNum(Math.abs(x), d); }
@@ -2937,8 +2982,8 @@ const Tutorial = {
     const st = TUTORIAL[S.tutorial.step];
     const extra = S.events.pending ? `<p class="small amber">💡 Un événement attend votre décision : sous chaque choix sont indiqués ses effets (💰 cash, ⭐ réputation, 🛡️ conformité, 🤝 confiance…). Aucun choix n'est gratuit.</p>` : '';
     panel.hidden = false;
-    panel.innerHTML = `<h4>🎓 Tutoriel · ${S.tutorial.step + 1}/${TUTORIAL.length} — ${st.title}</h4><p>${st.text(S)}</p>${extra}
-      <div class="row between"><button class="btn small" data-tut="stop">Passer le tutoriel</button>${st.next ? `<button class="btn small primary" data-tut="next">${S.tutorial.step === TUTORIAL.length - 1 ? 'Terminer ✓' : 'Suivant ›'}</button>` : '<span class="small muted">Faites l’action en surbrillance…</span>'}</div>`;
+    panel.innerHTML = textify(`<h4>🎓 Tutoriel · ${S.tutorial.step + 1}/${TUTORIAL.length} — ${st.title}</h4><p>${st.text(S)}</p>${extra}
+      <div class="row between"><button class="btn small" data-tut="stop">Passer le tutoriel</button>${st.next ? `<button class="btn small primary" data-tut="next">${S.tutorial.step === TUTORIAL.length - 1 ? 'Terminer ✓' : 'Suivant ›'}</button>` : '<span class="small muted">Faites l’action en surbrillance…</span>'}</div>`);
     if (st.target) { const el = document.querySelector(st.target); if (el) el.classList.add('tut-hl'); }
   }
 };
@@ -3514,7 +3559,18 @@ const GLOSSARY = {
   'Track record': 'Historique de performance qui prouve votre talent aux investisseurs.',
   'Conformité': 'Respect des règles. Sous 50 : amendes ; sous 20 trop longtemps : licence retirée.'
 };
-function gl(term, label) { return `<span class="gl" data-gl="${esc(term)}" title="${esc(GLOSSARY[term] || '')}">${label || term}</span>`; }
+/* Thème Terminal : remplace les emojis par du texte (lisibilité, lecteurs d'écran) */
+const EMOJI_RE = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:️|‍(?:\p{Extended_Pictographic})️?)*/gu;
+function textify(str) {
+  if (!str || UI.theme() !== 'terminal') return str;
+  return String(str)
+    .replace(/💰\s?(?=[+−-])/g, 'Cash ').replace(/⭐\s?(?=[+−-])/g, 'Réputation ').replace(/🛡️?\s?(?=[+−-])/g, 'Conformité ')
+    .replace(/🤝\s?(?=[+−-]|confiance)/g, 'Confiance ').replace(/🔬\s?(?=[+−-])/g, 'Recherche ').replace(/(\d)\s?🔬/g, '$1 RP')
+    .replace(/✅/g, '[OK]').replace(/❌/g, '[X]').replace(/⚠️/g, '[!]').replace(/🔒/g, '[verrouillé]').replace(/🟢/g, '[+]').replace(/🔴/g, '[−]').replace(/⚪/g, '[=]')
+    .replace(EMOJI_RE, m => (m === '▶' || m === '▶️' ? '▶' : ''))
+    .replace(/ {2,}/g, ' ').replace(/>\s+/g, m => m.replace(/ {2,}/g, ' '));
+}
+function gl(term, label) { return `<span class="gl" tabindex="0" role="button" data-gl="${esc(term)}" title="${esc(GLOSSARY[term] || '')}">${label || term}</span>`; }
 
 /* =============================================================================
    13. UI — rendu, onglets, modales, toasts, graphique
@@ -3555,12 +3611,19 @@ const UI = {
     document.addEventListener('input', e => this.onInput(e));
     document.addEventListener('change', e => this.onChange(e));
     document.addEventListener('keydown', e => {
-      if (e.code === 'Space' && !this.modalOpen && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement?.tagName)) {
+      if (this.modalOpen && e.key === 'Escape' && this.modalHandlers.close) { e.preventDefault(); this.modalHandlers.close(); return; }
+      if (this.modalOpen && e.key === 'Tab') {   // le focus reste dans la fenêtre
+        const f = [...this.$('modalRoot').querySelectorAll('button, input, select, [tabindex="0"]')].filter(x => !x.disabled && x.offsetParent !== null);
+        if (f.length) { const i = f.indexOf(document.activeElement); if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); } }
+      }
+      if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.classList.contains('gl')) { e.preventDefault(); this.showGlossary(document.activeElement.dataset.gl); return; }
+      if (e.code === 'Space' && !this.modalOpen && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement?.tagName) && !document.activeElement?.closest('[tabindex="0"]')) {
         e.preventDefault(); Game.tick();
       }
     });
     this.applyTheme(this.theme());
-    this.$('tabs').innerHTML = TABS.map(t => `<button class="tab" data-tab="${t.id}">${this.tabLabel(t)}</button>`).join('');
+    this.applyA11y(this.a11y());
+    this.$('tabs').innerHTML = TABS.map(t => `<button class="tab" role="tab" data-tab="${t.id}" aria-label="${t.label.replace(/^\S+\s/, '')}">${this.tabLabel(t)}</button>`).join('');
   },
 
   /* ---------- Délégation d'événements ---------- */
@@ -3668,7 +3731,7 @@ const UI = {
     this.$('fundName').textContent = `${S.fundName} · ${CONFIG.MODES[S.difficulty].label}${S.hardMode ? ' · Hard' : ''}${S.won ? ' · 🏆 Endless' : ''}`;
     const nextBtn = this.$('btnNext');
     nextBtn.disabled = S.status !== 'playing';
-    nextBtn.textContent = S.events.pending ? '❗ Décision en attente' : '▶ Semaine suivante';
+    nextBtn.textContent = textify(S.events.pending ? '❗ Décision en attente' : '▶ Semaine suivante');
 
     // Palier
     const T = TIERS[S.tier - 1], N = TIERS[S.tier];
@@ -3682,15 +3745,15 @@ const UI = {
       prog = T.min > 0 ? clamp(Math.log(Math.max(A, T.min) / T.min) / Math.log(N.min / T.min), 0, 1) : clamp(A / N.min, 0, 1);
       nextTxt = `Prochain : ${N.icon} ${N.name} à ${fmtMoney(N.min)} d'AUM`;
     }
-    this.$('tierBar').innerHTML = `
+    this.$('tierBar').innerHTML = textify(`
       <div class="tier-badge"><span class="ic">${T.icon}</span><div><div><span class="lvl">Palier ${S.tier}</span> ${T.name}</div><div class="small muted">${T.local} · capacité ${S.team.employees.length}/${T.cap === Infinity ? '∞' : T.cap}${T.bonusTxt !== '—' ? ' · ' + T.bonusTxt : ''}</div></div></div>
-      <div class="tier-progress"><div class="row between small"><span class="muted">${nextTxt}</span><span class="num">${fmtPct(prog, 0)}</span></div><div class="bar"><div style="width:${prog * 100}%"></div></div></div>`;
+      <div class="tier-progress"><div class="row between small"><span class="muted">${nextTxt}</span><span class="num">${fmtPct(prog, 0)}</span></div><div class="bar" aria-hidden="true"><div style="width:${prog * 100}%"></div></div></div>`);
 
     this.renderGoalBar();
     this.$('chartTitle').textContent = S.prop.launched ? 'Valeur liquidative du fonds (NAV par part, base 100 au lancement) & AUM' : 'Performance de votre allocation (base 100) — le fonds n’est pas encore lancé';
     this.$('btnSkip').disabled = S.status !== 'playing';
     this.$('btnMonth').disabled = S.status !== 'playing';
-    const gauge = (v, color) => `<div class="gauge"><div style="width:${clamp(v, 0, 100)}%;background:${color}"></div></div>`;
+    const gauge = (v, color) => `<div class="gauge" aria-hidden="true"><div style="width:${clamp(v, 0, 100)}%;background:${color}"></div></div>`;
     const colHigh = v => v > 90 ? 'var(--red)' : v > 70 ? 'var(--amber)' : v > 50 ? '#facc15' : 'var(--green)';
     const colLow = v => v < 20 ? 'var(--red)' : v < 50 ? 'var(--amber)' : 'var(--green)';
     const conf = Investors.globalConfidence();
@@ -3707,8 +3770,8 @@ const UI = {
       { l: 'Recherche', v: `🔬 ${fmtNum(Math.floor(S.rp))}`, s: `<span class="muted">+${fmtNum(Team.rpPerWeek(), 1)}/sem</span>` },
       { l: 'Jour', v: `${fmtNum(S.week * 7)}`, s: `<span class="muted">Sem. ${S.week} · An ${Math.floor(S.week / 52) + 1}</span>` }
     ];
-    this.$('stats').innerHTML = items.map(i => `<div class="stat"><div class="lab">${i.l}</div><div class="val num ${i.c || ''}">${i.v}</div><div class="sub num">${i.s}</div></div>`).join('');
-    this.$('btnAuto').textContent = `⏩ Auto : ${this.autoTimer ? 'ON' : 'OFF'}`;
+    this.$('stats').innerHTML = textify(items.map(i => `<div class="stat"><div class="lab">${i.l}</div><div class="val num ${i.c || ''}">${i.v}</div><div class="sub num">${i.s}</div></div>`).join(''));
+    this.$('btnAuto').textContent = textify(`⏩ Auto : ${this.autoTimer ? 'ON' : 'OFF'}`);
     this.$('btnAuto').classList.toggle('on', !!this.autoTimer);
   },
   /* Bandeau : indice de référence + objectif du trimestre */
@@ -3724,13 +3787,14 @@ const UI = {
     }
     if (S.strategy) html += `<div class="muted">${STRATEGIES[S.strategy].icon} ${STRATEGIES[S.strategy].name}</div>`;
     if (S.lastReport) html += `<button class="btn small" data-act="report">📄 Dernier rapport</button>`;
-    el.innerHTML = html;
+    el.innerHTML = textify(html);
   },
   renderTabs() {
     if (!S) return;
     const alerts = { portfolio: S.risk > 70, team: S.tier >= 2 && S.team.employees.length === 0 && S.team.candidates.length > 0, investors: Investors.globalConfidence() < 40 };
     document.querySelectorAll('.tab').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === this.tab);
+      b.setAttribute('aria-selected', b.dataset.tab === this.tab ? 'true' : 'false');
       const t = TABS.find(x => x.id === b.dataset.tab);
       b.innerHTML = this.tabLabel(t) + (alerts[t.id] ? '<span class="dot"></span>' : '');
     });
@@ -3740,7 +3804,7 @@ const UI = {
     const fn = { market: 'tabMarket', portfolio: 'tabPortfolio', team: 'tabTeam', investors: 'tabInvestors', upgrades: 'tabUpgrades', analysis: 'tabAnalysis', journal: 'tabJournal' }[this.tab];
     const el = this.$('tabContent');
     const scroll = el.querySelector('.journal')?.scrollTop;
-    el.innerHTML = this[fn]();
+    el.innerHTML = textify(this[fn]());
     if (scroll) { const j = el.querySelector('.journal'); if (j) j.scrollTop = scroll; }
   },
 
@@ -3750,7 +3814,7 @@ const UI = {
     const min = Math.min(...arr), max = Math.max(...arr), rg = max - min || 1;
     const pts = arr.map((v, i) => `${(i / (arr.length - 1) * w).toFixed(1)},${(h - 2 - (v - min) / rg * (h - 4)).toFixed(1)}`).join(' ');
     const col = arr[arr.length - 1] >= arr[0] ? 'var(--green)' : 'var(--red)';
-    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline fill="none" stroke="${col}" stroke-width="1.6" points="${pts}"/></svg>`;
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="${col}" stroke-width="1.6" points="${pts}"/></svg>`;
   },
 
   /* ---------- Onglet Marché ---------- */
@@ -3845,11 +3909,11 @@ const UI = {
     const row = k => {
       const a = CONFIG.ASSETS[k];
       const min = Portfolio.minWeight(k), max = f.leverage * 100;
-      const sl = casual ? '<span class="small muted">—</span>' : `<select data-sl="${k}" title="Stop-loss">${[0, 0.05, 0.1, 0.15, 0.2, 0.3].map(v => `<option value="${v}" ${f.stopLoss[k] === v ? 'selected' : ''}>${v ? 'SL ' + fmtPct(v, 0) : 'Pas de SL'}</option>`).join('')}</select>`;
+      const sl = casual ? '<span class="small muted">—</span>' : `<select data-sl="${k}" title="Stop-loss" aria-label="Stop-loss : ${a.name}">${[0, 0.05, 0.1, 0.15, 0.2, 0.3].map(v => `<option value="${v}" ${f.stopLoss[k] === v ? 'selected' : ''}>${v ? 'SL ' + fmtPct(v, 0) : 'Pas de SL'}</option>`).join('')}</select>`;
       return `<div class="alloc-row">
         <div class="a-name"><b>${a.icon} ${a.name}</b>${min < 0 ? ' <span class="pill b">short possible</span>' : ''}</div>
         <button class="btn small" data-act="w-minus" data-k="${k}">−</button>
-        <div class="a-slider"><input type="range" class="alloc-slider" data-k="${k}" min="${min}" max="${max}" step="1" value="${f.target[k]}"></div>
+        <div class="a-slider"><input type="range" class="alloc-slider" aria-label="Allocation cible : ${a.name}" data-k="${k}" min="${min}" max="${max}" step="1" value="${f.target[k]}"></div>
         <button class="btn small" data-act="w-plus" data-k="${k}">+</button>
         <div class="a-info"><span class="num"><span class="muted small">Cible </span><b id="tgt-${k}">${f.target[k]} %</b></span>
         <span class="num small"><span class="muted">Actuel </span>${fmtPct(w[k], 0)}</span>
@@ -3873,7 +3937,7 @@ const UI = {
           <div class="mt"><h4>Préréglages</h4><div class="row">${Object.entries(presets).map(([id, p]) => `<button class="btn small ${f.preset === id ? 'on' : ''}" data-act="preset" data-k="${id}">${p.label}</button>`).join('')}</div></div>
           ${casual ? '<div class="small muted mt">Mode casual : rééquilibrage automatique chaque semaine, pas de levier ni de vente à découvert.</div>' :
           `<div class="mt"><h4>Levier maximal</h4><div class="row">${levBtns}<span class="small muted">${maxL === 1 ? '2x au palier 5, 5x au palier 7' : maxL === 2 ? '5x au palier 7' : ''}</span></div></div>
-           <div class="mt row"><span class="small muted">Alerte drawdown à</span><select id="ddAlertSel">${[0.05, 0.1, 0.15, 0.2, 0.3].map(v => `<option value="${v}" ${f.ddAlert === v ? 'selected' : ''}>${fmtPct(v, 0)}</option>`).join('')}</select></div>`}
+           <div class="mt row"><span class="small muted">Alerte drawdown à</span><select id="ddAlertSel" aria-label="Seuil d’alerte de drawdown">${[0.05, 0.1, 0.15, 0.2, 0.3].map(v => `<option value="${v}" ${f.ddAlert === v ? 'selected' : ''}>${fmtPct(v, 0)}</option>`).join('')}</select></div>`}
         </div>
         <div class="card">
           <h4>Synthèse du fonds</h4>
@@ -3917,7 +3981,7 @@ const UI = {
       <span class="num">valeur ${fmtMoney(Hedges.payoff(h))} · ${h.expiry - S.week} sem. <button class="btn small" data-act="hedge-close" data-id="${h.id}">Revendre</button></span></div>`).join('');
     return `<div class="card mt"><h4>🛡️ ${gl('Couverture', 'Couvertures')} (protections)</h4>
       <div class="small muted">Une protection rapporte la baisse de l'actif au-delà de −10 % pendant 13 semaines. Vous payez une ${gl('Prime', 'prime')} d'avance (plus chère quand le marché est nerveux). Elle réduit aussi le score de risque.</div>
-      <div class="row mt"><select id="hedgeSel">${ks.map(k => `<option value="${k}" ${k === this.hedgeK ? 'selected' : ''}>${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name}</option>`).join('')}</select>
+      <div class="row mt"><select id="hedgeSel" aria-label="Actif à couvrir">${ks.map(k => `<option value="${k}" ${k === this.hedgeK ? 'selected' : ''}>${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name}</option>`).join('')}</select>
       <span class="small">Prime : <b>${fmtPct(rate, 1)}</b> du montant couvert</span>
       ${[0.1, 0.25, 0.5].map(f => `<button class="btn small" data-act="hedge-buy" data-f="${f}">Couvrir ${fmtPct(f, 0)} de l'AUM (prime ${fmtMoney(A * f * rate)})</button>`).join('')}</div>
       ${list ? `<h4 class="mt">Protections en cours</h4>${list}` : ''}
@@ -4159,8 +4223,8 @@ const UI = {
       const C = theo ? Market.corrMatrix(S.market.regime) : null;
       const r = {}; if (!theo) keys.forEach(k => { r[k] = Analysis.rets(k, 26); });
       const cell = (a, b) => { const v = a === b ? 1 : theo ? C[RISKY.indexOf(a)][RISKY.indexOf(b)] : Analysis.corr(r[a], r[b]);
-        const bg = v >= 0 ? `rgba(248,113,113,${Math.abs(v) * 0.85})` : `rgba(96,165,250,${Math.abs(v) * 0.85})`;
-        return `<td style="background:${bg}" title="${A[a].name} / ${A[b].name} : ${fmtNum(v, 2)}">${a === b ? '' : fmtNum(v, 1)}</td>`; };
+        const bg = v >= 0 ? `rgba(248,113,113,${Math.abs(v) * 0.55})` : `rgba(96,165,250,${Math.abs(v) * 0.55})`;
+        return `<td style="background:${bg};color:#fff" title="${A[a].name} / ${A[b].name} : ${fmtNum(v, 2)}">${a === b ? '' : fmtNum(v, 1)}</td>`; };
       heat = `<div class="row between"><span class="small muted">${theo ? 'Corrélations théoriques dans le régime actuel (' + CONFIG.REGIMES[S.market.regime].name + ')' : 'Corrélations observées sur les 26 dernières semaines'} · rouge = bougent ensemble, bleu = en sens inverse</span>
         <button class="btn small" data-act="corr-mode">${theo ? 'Voir les observées' : 'Voir les théoriques'}</button></div>
         <div class="tablewrap mt"><table class="heat"><tr><th></th>${keys.map(k => `<th class="v">${A[k].short}</th>`).join('')}</tr>
@@ -4218,7 +4282,7 @@ const UI = {
     const got = ACHIEVEMENTS.filter(a => S.achievements[a.id] !== undefined).length;
     const ach = ACHIEVEMENTS.map(a => `<div class="card ${S.achievements[a.id] !== undefined ? '' : 'off'}"><b>${a.icon} ${a.name}</b><div class="muted">${a.desc}</div></div>`).join('');
     return `<div class="row between"><h3 style="margin:0">🏅 Succès (${got}/${ACHIEVEMENTS.length})</h3>${S.lastReport ? '<button class="btn small" data-act="report">📄 Dernier rapport trimestriel</button>' : ''}</div>
-      <div class="ach mt">${ach}</div><h3>Journal</h3><div class="journal">${S.journal.map(j => `<div class="jline ${j.type}"><span class="w num">Jour ${fmtNum(j.w * 7)}</span><span class="t">${esc(j.t)}</span></div>`).join('')}</div>`;
+      <div class="ach mt">${ach}</div><h3>Journal</h3><div class="journal" tabindex="0" aria-label="Journal des événements">${S.journal.map(j => `<div class="jline ${j.type}"><span class="w num">Jour ${fmtNum(j.w * 7)}</span><span class="t">${esc(j.t)}</span></div>`).join('')}</div>`;
   },
 
   /* ---------- Graphique NAV (Chart.js, avec repli canvas) ---------- */
@@ -4234,6 +4298,7 @@ const UI = {
   },
   updateChart() {
     if (!this.enabled || !S) return;
+    this.$('navChart').setAttribute('aria-label', `${this.$('chartTitle').textContent}. NAV actuelle ${fmtNum(S.fund.navps, 2)}, AUM ${fmtMoney(Game.totalAUM())}${S.bench.def ? ', ' + Bench.name() + ' ' + fmtPct(Bench.idx(), 1, true) + ' depuis le lancement, fonds ' + fmtPct(Bench.you(), 1, true) : ''}.`);
     const h = S.history;
     const labels = h.week.map(w => 'J' + w * 7);
     if (this.chartLoaded && typeof window.Chart === 'function') {
@@ -4308,17 +4373,32 @@ const UI = {
 
   /* ---------- Décor du palier ---------- */
   /* ---------- Thèmes ---------- */
-  THEMES: { classique: 'Classique', terminal: 'Terminal', journal: 'Journal financier' },
+  THEMES: { terminal: 'Terminal (par défaut)', journal: 'Journal financier', classique: 'Classique' },
   TAB_TEXT: {
     terminal: { market: 'MKT', portfolio: 'PORT', team: 'TEAM', investors: 'CLNT', upgrades: 'UPGR', analysis: 'ANLY', journal: 'LOG' },
     journal: { market: 'Marchés', portfolio: 'Portefeuille', team: 'Équipe', investors: 'Clients', upgrades: 'Investissements', analysis: 'Analyse', journal: 'Chronique' }
   },
   accentColor() { return this.theme() === 'classique' ? TIERS[S.tier - 1].accent : getComputedStyle(document.body).getPropertyValue('--accent').trim(); },
-  theme() { try { return localStorage.getItem('hft_theme') || 'classique'; } catch (e) { return 'classique'; } },
+  theme() { try { return localStorage.getItem('hft_theme') || 'terminal'; } catch (e) { return 'terminal'; } },
+  a11y() { try { return JSON.parse(localStorage.getItem('hft_a11y') || '{}'); } catch (e) { return {}; } },
+  applyA11y(o) {
+    try { localStorage.setItem('hft_a11y', JSON.stringify(o)); } catch (e) { /* ignore */ }
+    document.documentElement.dataset.size = o.size || 'normal';
+    if (o.cb) document.body.dataset.cb = '1'; else delete document.body.dataset.cb;
+  },
+  /* Libellés texte des boutons d'icônes selon le thème */
+  headerLabels() {
+    const t = this.theme() === 'terminal';
+    const L = t ? { btnMonth: 'Mois +1', btnSkip: 'Prochain fait', btnGloss: 'Glossaire', btnSave: 'Sauver', btnLoad: 'Sauvegardes', btnSettings: 'Réglages' }
+                : { btnMonth: '⏩ Mois suivant', btnSkip: '⏭️ Jusqu\'au prochain fait', btnGloss: '📖', btnSave: '💾', btnLoad: '📂', btnSettings: '⚙️' };
+    for (const id in L) this.$(id).textContent = L[id];
+  },
   tabLabel(t) { const m = this.TAB_TEXT[this.theme()]; return m ? m[t.id] : t.label; },
   applyTheme(name) {
     try { localStorage.setItem('hft_theme', name); } catch (e) { /* ignore */ }
     if (name === 'classique') delete document.body.dataset.theme; else document.body.dataset.theme = name;
+    this.headerLabels();
+    this.$('tabs').querySelectorAll('.tab').forEach(b => { const t = TABS.find(x => x.id === b.dataset.tab); if (t) b.textContent = this.tabLabel(t); });
     const r = document.documentElement.style;
     if (name !== 'classique') { r.removeProperty('--bg'); r.removeProperty('--bg2'); r.removeProperty('--accent'); }
     if (this.chart) { try { this.chart.destroy(); } catch (e) { /* ignore */ } this.chart = null; }
@@ -4350,7 +4430,7 @@ const UI = {
     const box = this.$('toasts');
     const el = document.createElement('div');
     el.className = 'toast ' + type;
-    el.textContent = msg;
+    el.textContent = textify(msg);
     box.appendChild(el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => el.remove(), 4500);
@@ -4361,10 +4441,14 @@ const UI = {
     if (!this.enabled) return;
     this.stopAuto();
     this.modalHandlers = Object.assign({}, handlers, closable ? { close: () => this.closeModal() } : {});
-    this.$('modalRoot').innerHTML = `<div class="modal-bg"><div class="modal">${html}</div></div>`;
+    this.$('modalRoot').innerHTML = `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">${textify(html)}</div></div>`;
+    const h2 = this.$('modalRoot').querySelector('h2'); if (h2) h2.id = 'modalTitle';
     this.modalOpen = true;
+    this.lastFocus = document.activeElement;
+    const first = this.$('modalRoot').querySelector('input, select, button');
+    (first || this.$('modalRoot').querySelector('.modal')).focus();
   },
-  closeModal() { if (!this.enabled) return; this.$('modalRoot').innerHTML = ''; this.modalOpen = false; this.modalHandlers = {}; if (S) Tutorial.render(); },
+  closeModal() { if (!this.enabled) return; this.$('modalRoot').innerHTML = ''; this.modalOpen = false; this.modalHandlers = {}; if (this.lastFocus && document.body.contains(this.lastFocus)) this.lastFocus.focus(); if (S) Tutorial.render(); },
   confirm(title, text, onYes) {
     this.showModal(`<h2>${title}</h2><p class="muted">${text}</p><div class="row mt"><button class="btn primary" data-modal="yes">Confirmer</button><button class="btn" data-modal="close">Annuler</button></div>`,
       { yes: () => { this.closeModal(); onYes(); } });
@@ -4448,13 +4532,13 @@ const UI = {
     this.showModal(`<div class="icon">📊</div><h2>Hedge Fund Tycoon</h2>
       <p>Commencez comme trader de prop firm avec ${fmtMoney(CONFIG.START_CASH * (1 + lb))} : réussissez le challenge, prouvez vos résultats sur un compte financé, puis lancez votre fonds et bâtissez un empire de la gestion alternative. Objectif : <b>1 Md$ d'AUM</b> et une <b>réputation ≥ 90</b>.</p>
       ${l.runs ? `<p class="small green">Legacy : ${l.runs} partie(s) précédente(s), meilleur AUM ${fmtMoney(l.bestAUM || 0)} → +${fmtPct(lb, 0)} de capital.</p>` : ''}
-      <div class="row"><span class="small muted">Nom du fonds</span><input type="text" id="fundNameIn" maxlength="32" value="Phoenix Capital" style="flex:1"></div>
+      <div class="row"><label for="fundNameIn" class="small muted">Nom du fonds</label><input type="text" id="fundNameIn" maxlength="32" value="Phoenix Capital" style="flex:1"></div>
       <div class="diffopt">
         <label><input type="radio" name="diff" value="casual" checked><b>Casual</b><div class="small muted">Rééquilibrage auto, préréglages, pas de levier ni de short, événements plus rares et plus doux.</div></label>
         <label><input type="radio" name="diff" value="intermediate"><b>Intermédiaire</b><div class="small muted">Levier, short, stop-loss, devises… événements plus durs, conformité stricte, clients exigeants.</div></label>
       </div>
       <label class="row"><input type="checkbox" id="tutChk" ${l.runs ? '' : 'checked'}> 🎓 Tutoriel guidé pendant la phase prop firm</label>
-      <div class="row"><span class="small muted">Emplacement</span><select id="slotSel">${[1, 2, 3].map(n => { const i = Save.info(n); return `<option value="${n}" ${n === Save.firstFree() ? 'selected' : ''}>${n} — ${i ? esc(i.name) + ', sem. ' + i.week + ' (sera écrasé)' : 'vide'}</option>`; }).join('')}</select></div>
+      <div class="row"><label for="slotSel" class="small muted">Emplacement</label><select id="slotSel">${[1, 2, 3].map(n => { const i = Save.info(n); return `<option value="${n}" ${n === Save.firstFree() ? 'selected' : ''}>${n} — ${i ? esc(i.name) + ', sem. ' + i.week + ' (sera écrasé)' : 'vide'}</option>`; }).join('')}</select></div>
       <div class="row mt">${hasSave ? '<button class="btn primary" data-modal="cont">▶ Continuer la dernière partie</button>' : ''}<button class="btn ${hasSave ? '' : 'primary'}" data-modal="new">✨ Nouvelle partie</button>${hasSave ? '<button class="btn" data-modal="slots">📂 Autres sauvegardes / import</button>' : '<button class="btn" data-modal="slots">⬆️ Importer</button>'}</div>
       <p class="small muted mt">Astuce : la barre d'espace fait passer une semaine. Un tick = une semaine.</p>`,
       {
@@ -4491,12 +4575,15 @@ const UI = {
       </div>
       <div class="small amber">⚠️ Changer de difficulté en cours de partie modifie la volatilité, les événements et la conformité. Passer en casual ferme levier et positions courtes.</div>
       <h4 class="mt">Apparence</h4>
-      <div class="row"><span>Thème</span><select id="themeSel">${Object.entries(this.THEMES).map(([k, v]) => `<option value="${k}" ${this.theme() === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="row"><label for="themeSel">Thème</label><select id="themeSel">${Object.entries(this.THEMES).map(([k, v]) => `<option value="${k}" ${this.theme() === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <h4 class="mt">Accessibilité</h4>
+      <div class="row"><label for="sizeSel">Taille du texte</label><select id="sizeSel"><option value="normal" ${(this.a11y().size || 'normal') === 'normal' ? 'selected' : ''}>Normale</option><option value="large" ${this.a11y().size === 'large' ? 'selected' : ''}>Grande (+15 %)</option><option value="xlarge" ${this.a11y().size === 'xlarge' ? 'selected' : ''}>Très grande (+30 %)</option></select></div>
+      <label class="row"><input type="checkbox" id="cbChk" ${this.a11y().cb ? 'checked' : ''}> Palette adaptée au daltonisme (bleu / orange au lieu de vert / rouge)</label>
       <h4 class="mt">Options</h4>
       <label class="row"><input type="checkbox" id="tutSet" ${S.tutorial && S.tutorial.on ? 'checked' : ''}> 🎓 Tutoriel guidé (phase prop firm)</label>
       <label class="row"><input type="checkbox" id="repChk" ${S.showReports ? 'checked' : ''}> Afficher automatiquement le rapport trimestriel</label>
       <label class="row"><input type="checkbox" id="hardChk" ${S.hardMode ? 'checked' : ''}> Hard mode : rétrogradation de palier si l'AUM tombe sous 50 % du seuil</label>
-      <div class="row mt"><span>Vitesse de l'avance auto</span><select id="speedSel">${Object.keys(speeds).map(k => `<option value="${k}" ${(this.autoSpeed || 'normal') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
+      <div class="row mt"><label for="speedSel">Vitesse de l'avance auto</label><select id="speedSel">${Object.keys(speeds).map(k => `<option value="${k}" ${(this.autoSpeed || 'normal') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
       <h4 class="mt">Partie</h4>
       <div class="row"><button class="btn" data-modal="save">💾 Sauvegarder</button><button class="btn" data-modal="load">📂 Emplacements, export / import</button><button class="btn danger" data-modal="reset">🗑️ Recommencer (reset)</button></div>
       <div class="row mt"><button class="btn primary" data-modal="apply">Appliquer</button><button class="btn" data-modal="close">Fermer</button></div>`,
@@ -4509,6 +4596,7 @@ const UI = {
           if (!S.tutorial) S.tutorial = { on: false, step: 0, mark: 0, preset: false };
           if (tOn && !S.tutorial.on && !S.prop.launched) { S.tutorial.on = true; S.tutorial.step = 0; } else if (!tOn) S.tutorial.on = false;
           this.autoSpeed = this.$('speedSel')?.value || 'normal';
+          this.applyA11y({ size: this.$('sizeSel')?.value || 'normal', cb: !!this.$('cbChk')?.checked });
           const th = this.$('themeSel')?.value; if (th && th !== this.theme()) this.applyTheme(th);
           this.closeModal();
           if (d && d !== S.difficulty) this.confirm('Changer la difficulté ?', `Passer en ${CONFIG.MODES[d].label} en cours de partie. Continuer ?`, () => Game.setDifficulty(d));
