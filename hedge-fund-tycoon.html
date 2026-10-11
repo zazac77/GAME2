@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hedge Fund Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Inter:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
 <!--
 =============================================================================
   HEDGE FUND TYCOON — jeu tycoon financier, fichier unique (HTML + CSS + JS)
@@ -250,6 +252,75 @@
     .alloc-row .a-info { grid-column: 1 / 4; display: flex; gap: 12px; justify-content: space-between; align-items: center; }
     #toasts .toast:nth-last-child(n+4) { display: none; }
   }
+
+  /* =====================================================================
+     THÈMES (ébauche) — même structure, habillage différent.
+     body[data-theme] : 'terminal' (type Bloomberg) | 'journal' (éditorial)
+     ===================================================================== */
+  /* ---- 1. Terminal ---- */
+  body[data-theme="terminal"] {
+    --bg: #000; --bg2: #000; --panel: #070707; --panel2: #0c0c0c; --border: #262626;
+    --text: #e6e6e6; --muted: #8c8c8c; --green: #00c853; --red: #ff3d3d; --amber: #ffab00; --blue: #4fc3f7; --accent: #ffab00; --radius: 0px;
+    background: #000; font-family: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+  }
+  body[data-theme="terminal"] #decorIcon { display: none; }
+  body[data-theme="terminal"] .panel, body[data-theme="terminal"] .card, body[data-theme="terminal"] .stat,
+  body[data-theme="terminal"] .modal, body[data-theme="terminal"] .toast, body[data-theme="terminal"] #tutPanel { border-radius: 0; backdrop-filter: none; box-shadow: none; }
+  body[data-theme="terminal"] .panel { background: #000; border-color: #262626; }
+  body[data-theme="terminal"] .card { background: #050505; border-color: #1f1f1f; }
+  body[data-theme="terminal"] .stat { background: #000; border: none; border-left: 2px solid var(--amber); padding: 4px 10px; }
+  body[data-theme="terminal"] .stat .lab { color: var(--amber); }
+  body[data-theme="terminal"] .stat .val { font-weight: 500; font-size: 18px; }
+  body[data-theme="terminal"] h1 { font-size: 16px; letter-spacing: .15em; text-transform: uppercase; color: var(--amber); }
+  body[data-theme="terminal"] h3, body[data-theme="terminal"] h4 { color: var(--amber); text-transform: uppercase; letter-spacing: .1em; font-weight: 500; }
+  body[data-theme="terminal"] .logo { display: none; }
+  body[data-theme="terminal"] .btn { border-radius: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; background: #111; border-color: #333; font-family: inherit; }
+  body[data-theme="terminal"] .btn:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+  body[data-theme="terminal"] .btn.primary { background: var(--amber); color: #000; }
+  body[data-theme="terminal"] .tabs { border-bottom: 1px solid var(--amber); gap: 0; }
+  body[data-theme="terminal"] .tab { border-radius: 0; font-family: inherit; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--amber); }
+  body[data-theme="terminal"] .tab.active { background: var(--amber); color: #000; border-color: var(--amber); }
+  body[data-theme="terminal"] .pill { border-radius: 0; background: #1a1a1a; }
+  body[data-theme="terminal"] .bar, body[data-theme="terminal"] .gauge, body[data-theme="terminal"] .stack { border-radius: 0; }
+  body[data-theme="terminal"] .bar > div, body[data-theme="terminal"] .gauge > div { border-radius: 0; }
+  body[data-theme="terminal"] .tier-badge .lvl { border-radius: 0; }
+  body[data-theme="terminal"] table.t th { color: var(--amber); text-transform: uppercase; font-weight: 500; font-size: 11px; }
+  body[data-theme="terminal"] .kv { border-bottom: 1px solid #141414; }
+  body[data-theme="terminal"] select, body[data-theme="terminal"] input { border-radius: 0; background: #000; font-family: inherit; }
+
+  /* ---- 2. Journal financier ---- */
+  body[data-theme="journal"] {
+    --bg: #f4efe4; --bg2: #f4efe4; --panel: #fbf8f1; --panel2: #fffdf8; --border: #d8cdb8;
+    --text: #1c1915; --muted: #6e6557; --green: #17693c; --red: #a1232b; --amber: #9a6400; --blue: #1f4e79; --accent: #7a1f2b; --radius: 2px;
+    background: #f4efe4; color: var(--text); font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif; font-size: 15px;
+  }
+  body[data-theme="journal"] #decorIcon { display: none; }
+  body[data-theme="journal"] .num, body[data-theme="journal"] .stat .val, body[data-theme="journal"] table.t td, body[data-theme="journal"] .btn,
+  body[data-theme="journal"] select, body[data-theme="journal"] input, body[data-theme="journal"] .tab, body[data-theme="journal"] .pill { font-family: 'Inter', system-ui, sans-serif; }
+  body[data-theme="journal"] .panel { background: transparent; border: none; border-top: 3px double var(--text); border-radius: 0; backdrop-filter: none; padding: 10px 0; }
+  body[data-theme="journal"] .card { background: var(--panel2); border: 1px solid var(--border); border-radius: 2px; }
+  body[data-theme="journal"] .stat { background: transparent; border: none; border-top: 1px solid var(--text); border-radius: 0; padding: 6px 4px; }
+  body[data-theme="journal"] .stat .lab { color: var(--accent); font-variant: small-caps; text-transform: none; letter-spacing: .05em; font-size: 13px; }
+  body[data-theme="journal"] .stat .val { font-size: 20px; }
+  body[data-theme="journal"] h1 { font-family: 'Source Serif 4', Georgia, serif; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+  body[data-theme="journal"] h3 { font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--text); padding-bottom: 3px; }
+  body[data-theme="journal"] h4 { color: var(--accent); font-variant: small-caps; text-transform: none; letter-spacing: .06em; font-size: 14px; }
+  body[data-theme="journal"] .logo { display: none; }
+  body[data-theme="journal"] .btn { background: transparent; border: 1px solid var(--text); border-radius: 2px; color: var(--text); }
+  body[data-theme="journal"] .btn:hover:not(:disabled) { background: var(--text); color: var(--bg); }
+  body[data-theme="journal"] .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  body[data-theme="journal"] .tabs { border-bottom: 1px solid var(--text); }
+  body[data-theme="journal"] .tab { color: var(--muted); border-radius: 0; }
+  body[data-theme="journal"] .tab.active { background: transparent; color: var(--text); border: none; border-bottom: 3px solid var(--accent); font-weight: 700; }
+  body[data-theme="journal"] .pill { background: transparent; border: 1px solid var(--border); border-radius: 2px; }
+  body[data-theme="journal"] .bar, body[data-theme="journal"] .gauge, body[data-theme="journal"] .stack, body[data-theme="journal"] .sens { background: rgba(0,0,0,.08); border-radius: 0; }
+  body[data-theme="journal"] .kv { border-bottom: 1px dotted var(--border); }
+  body[data-theme="journal"] .modal, body[data-theme="journal"] .toast, body[data-theme="journal"] #tutPanel { background: #fffdf8; color: var(--text); box-shadow: 0 6px 24px rgba(0,0,0,.18); border-radius: 2px; }
+  body[data-theme="journal"] .modal-bg { background: rgba(40,30,20,.45); }
+  body[data-theme="journal"] table.t th { color: var(--accent); font-variant: small-caps; }
+  body[data-theme="journal"] table.t tr.cur td { background: rgba(122,31,43,.07); }
+  body[data-theme="journal"] select, body[data-theme="journal"] input[type=text] { background: #fffdf8; color: var(--text); }
+  body[data-theme="journal"] .lockbox { border-color: var(--border); }
 </style>
 </head>
 <body>
@@ -3488,7 +3559,8 @@ const UI = {
         e.preventDefault(); Game.tick();
       }
     });
-    this.$('tabs').innerHTML = TABS.map(t => `<button class="tab" data-tab="${t.id}">${t.label}</button>`).join('');
+    this.applyTheme(this.theme());
+    this.$('tabs').innerHTML = TABS.map(t => `<button class="tab" data-tab="${t.id}">${this.tabLabel(t)}</button>`).join('');
   },
 
   /* ---------- Délégation d'événements ---------- */
@@ -3660,7 +3732,7 @@ const UI = {
     document.querySelectorAll('.tab').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === this.tab);
       const t = TABS.find(x => x.id === b.dataset.tab);
-      b.innerHTML = t.label + (alerts[t.id] ? '<span class="dot"></span>' : '');
+      b.innerHTML = this.tabLabel(t) + (alerts[t.id] ? '<span class="dot"></span>' : '');
     });
   },
   renderTab() {
@@ -4171,7 +4243,7 @@ const UI = {
           this.chart = new window.Chart(ctx, {
             type: 'line',
             data: { labels, datasets: [
-              { label: 'NAV / part', data: h.navps.slice(), borderColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d9a066', borderWidth: 2, pointRadius: 0, tension: 0.15, yAxisID: 'y' },
+              { label: 'NAV / part', data: h.navps.slice(), borderColor: this.accentColor(), borderWidth: 2, pointRadius: 0, tension: 0.15, yAxisID: 'y' },
               { label: 'AUM', data: h.aum.map(v => v > 0 ? v : null), borderColor: '#60a5fa', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.15, yAxisID: 'y1', spanGaps: true },
               { label: 'Indice de référence', data: h.bench.slice(), borderColor: '#8b95a8', borderWidth: 1.2, pointRadius: 0, tension: 0.15, yAxisID: 'y', spanGaps: true }
             ] },
@@ -4192,7 +4264,7 @@ const UI = {
         } else {
           this.chart.data.labels = labels;
           this.chart.data.datasets[0].data = h.navps.slice();
-          this.chart.data.datasets[0].borderColor = TIERS[S.tier - 1].accent;
+          this.chart.data.datasets[0].borderColor = this.accentColor();
           this.chart.data.datasets[1].data = h.aum.map(v => v > 0 ? v : null);
           this.chart.data.datasets[2].data = h.bench.slice();
           this.chart.update('none');
@@ -4219,7 +4291,7 @@ const UI = {
     if (d.length < 2) return;
     const all = b.length === d.length ? d.concat(b.filter(v => v !== null)) : d;
     const min = Math.min(...all), max = Math.max(...all), rg = max - min || 1;
-    ctx.strokeStyle = 'rgba(255,255,255,.08)';
+    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--border').trim() || 'rgba(255,255,255,.08)';
     for (let i = 0; i <= 4; i++) { const y = 10 + i * (H - 20) / 4; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W, y); ctx.stroke(); }
     ctx.fillStyle = '#8b95a8'; ctx.font = '11px sans-serif';
     ctx.fillText(fmtNum(max, 1), 2, 14); ctx.fillText(fmtNum(min, 1), 2, H - 6);
@@ -4229,15 +4301,33 @@ const UI = {
       b.forEach((v, i) => { if (v === null) return; const y = 10 + (1 - (v - min) / rg) * (H - 20); const x = 40 + i / (b.length - 1) * (W - 44); started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true; });
       ctx.stroke();
     }
-    ctx.strokeStyle = TIERS[S.tier - 1].accent; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.strokeStyle = this.accentColor(); ctx.lineWidth = 2; ctx.beginPath();
     d.forEach((v, i) => { const x = 40 + i / (d.length - 1) * (W - 44); const y = 10 + (1 - (v - min) / rg) * (H - 20); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     ctx.stroke();
   },
 
   /* ---------- Décor du palier ---------- */
+  /* ---------- Thèmes ---------- */
+  THEMES: { classique: 'Classique', terminal: 'Terminal', journal: 'Journal financier' },
+  TAB_TEXT: {
+    terminal: { market: 'MKT', portfolio: 'PORT', team: 'TEAM', investors: 'CLNT', upgrades: 'UPGR', analysis: 'ANLY', journal: 'LOG' },
+    journal: { market: 'Marchés', portfolio: 'Portefeuille', team: 'Équipe', investors: 'Clients', upgrades: 'Investissements', analysis: 'Analyse', journal: 'Chronique' }
+  },
+  accentColor() { return this.theme() === 'classique' ? TIERS[S.tier - 1].accent : getComputedStyle(document.body).getPropertyValue('--accent').trim(); },
+  theme() { try { return localStorage.getItem('hft_theme') || 'classique'; } catch (e) { return 'classique'; } },
+  tabLabel(t) { const m = this.TAB_TEXT[this.theme()]; return m ? m[t.id] : t.label; },
+  applyTheme(name) {
+    try { localStorage.setItem('hft_theme', name); } catch (e) { /* ignore */ }
+    if (name === 'classique') delete document.body.dataset.theme; else document.body.dataset.theme = name;
+    const r = document.documentElement.style;
+    if (name !== 'classique') { r.removeProperty('--bg'); r.removeProperty('--bg2'); r.removeProperty('--accent'); }
+    if (this.chart) { try { this.chart.destroy(); } catch (e) { /* ignore */ } this.chart = null; }
+    if (S) { this.applyDecor(); this.renderAll(); this.renderTabs(); }
+  },
   applyDecor() {
     if (!this.enabled || !S) return;
     const T = TIERS[S.tier - 1];
+    if (this.theme() !== 'classique') { this.$('decorIcon').textContent = ''; return; }
     const r = document.documentElement.style;
     r.setProperty('--bg', T.bg[0]); r.setProperty('--bg2', T.bg[1]); r.setProperty('--accent', T.accent);
     this.$('decorIcon').textContent = T.icon;
@@ -4400,6 +4490,8 @@ const UI = {
         <label><input type="radio" name="sdiff" value="intermediate" ${S.difficulty === 'intermediate' ? 'checked' : ''}><b>Intermédiaire</b></label>
       </div>
       <div class="small amber">⚠️ Changer de difficulté en cours de partie modifie la volatilité, les événements et la conformité. Passer en casual ferme levier et positions courtes.</div>
+      <h4 class="mt">Apparence</h4>
+      <div class="row"><span>Thème</span><select id="themeSel">${Object.entries(this.THEMES).map(([k, v]) => `<option value="${k}" ${this.theme() === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <h4 class="mt">Options</h4>
       <label class="row"><input type="checkbox" id="tutSet" ${S.tutorial && S.tutorial.on ? 'checked' : ''}> 🎓 Tutoriel guidé (phase prop firm)</label>
       <label class="row"><input type="checkbox" id="repChk" ${S.showReports ? 'checked' : ''}> Afficher automatiquement le rapport trimestriel</label>
@@ -4417,6 +4509,7 @@ const UI = {
           if (!S.tutorial) S.tutorial = { on: false, step: 0, mark: 0, preset: false };
           if (tOn && !S.tutorial.on && !S.prop.launched) { S.tutorial.on = true; S.tutorial.step = 0; } else if (!tOn) S.tutorial.on = false;
           this.autoSpeed = this.$('speedSel')?.value || 'normal';
+          const th = this.$('themeSel')?.value; if (th && th !== this.theme()) this.applyTheme(th);
           this.closeModal();
           if (d && d !== S.difficulty) this.confirm('Changer la difficulté ?', `Passer en ${CONFIG.MODES[d].label} en cours de partie. Continuer ?`, () => Game.setDifficulty(d));
           this.renderAll();
