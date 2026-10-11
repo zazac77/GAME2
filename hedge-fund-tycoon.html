@@ -329,14 +329,14 @@ const CONFIG = {
   // rentables. Le fonds peut être lancé après gradWeeks semaines financées.
   PROP: {
     casual:       { fee: 50, size: 10000, target: 0.06, maxDD: 0.15, deadline: 0,  funded: 50000, gradWeeks: 20 },
-    intermediate: { fee: 80, size: 10000, target: 0.08, maxDD: 0.10, deadline: 39, funded: 50000, gradWeeks: 26 },
+    intermediate: { fee: 80, size: 10000, target: 0.07, maxDD: 0.10, deadline: 52, funded: 50000, gradWeeks: 26 },
     split: 0.80, payoutEvery: 4, scaleEvery: 13, scaleMult: 1.25, maxSize: 2e6, cooldown: 8
   },
 
   MODES: {
     casual: {
       label: 'Casual', volMult: 0.8, negDriftMult: 0.7, eventInterval: [5, 8], eventSeverity: 0.6,
-      complexityPerTier: 1.5, fineProb: 0.06, licenseWeeks: 10, investorDemand: 1.0
+      complexityPerTier: 1.5, fineProb: 0.06, licenseWeeks: 10, investorDemand: 0.85
     },
     intermediate: {
       label: 'Intermédiaire', volMult: 1.0, negDriftMult: 1.0, eventInterval: [3, 6], eventSeverity: 1.0,
@@ -405,7 +405,7 @@ const CONFIG = {
   // corrélations vers la matrice de stress (0 = normal, 1 = tout corrélé).
   REGIMES: {
     bull:   { name: 'Haussier', icon: '🐂', volMult: 0.85, corrStress: 0.0,
-              mu: { equities: 0.215, bonds: 0.025, commodities: 0.12, fx: 0.012, crypto: 0.70, derivatives: 0.16, emerging: 0.27 } },
+              mu: { equities: 0.215, bonds: 0.025, commodities: 0.12, fx: 0.012, crypto: 0.55, derivatives: 0.16, emerging: 0.27 } },
     range:  { name: 'Latéral',  icon: '↔️', volMult: 0.8, corrStress: 0.0,
               mu: { equities: 0.09, bonds: 0.035, commodities: 0.06, fx: 0.01, crypto: 0.30, derivatives: 0.14, emerging: 0.09 } },
     bear:   { name: 'Baissier', icon: '🐻', volMult: 1.3, corrStress: 0.25,
@@ -413,7 +413,7 @@ const CONFIG = {
     crisis: { name: 'Crise',    icon: '🔥', volMult: 2.2, corrStress: 0.65,
               mu: { equities: -0.45, bonds: 0.08, commodities: -0.25, fx: 0.03, crypto: -1.20, derivatives: -0.90, emerging: -0.60 } },
     bubble: { name: 'Bulle',    icon: '🫧', volMult: 1.15, corrStress: 0.2,
-              mu: { equities: 0.35, bonds: 0.0, commodities: 0.15, fx: 0.0, crypto: 2.20, derivatives: 0.20, emerging: 0.40 } }
+              mu: { equities: 0.35, bonds: 0.0, commodities: 0.15, fx: 0.0, crypto: 1.80, derivatives: 0.20, emerging: 0.40 } }
   },
   // Transitions markoviennes hebdomadaires (chaque ligne somme à 1)
   REGIME_TRANSITIONS: {
@@ -722,7 +722,7 @@ const Market = {
     for (const f in x) r += (L[f] || 0) * (A.vol / CONFIG.FACTORS[f].ref) * x[f];
     return clamp(r, -0.6, 1);
   },
-  factorShock(x) { const map = {}; for (const k of RISKY) { const v = this.impact(k, x); if (Math.abs(v) > 1e-4) map[k] = v; } this.shock(map); return map; },
+  factorShock(x, recover = true) { const map = {}; for (const k of RISKY) { const v = this.impact(k, x); if (Math.abs(v) > 1e-4) map[k] = v; } this.shock(map, recover); return map; },
   factorMod(x, weeks) { for (const k of RISKY) { const v = this.impact(k, x); if (Math.abs(v) > 0.002) this.addModifier(k, v, weeks); } },
 
   /* Rendement annuel espéré d'un actif dans le régime courant (+ modificateurs) */
@@ -863,9 +863,12 @@ const Market = {
   forceRegime(regime, weeks, after) { S.market.forced = { regime, weeks, after }; S.market.regime = regime; S.market.regimeWeeks = 0; },
 
   /* Choc instantané (événements) : prix + positions du fonds */
-  shock(map) {
+  /* recover : les baisses liées aux événements se résorbent à 80 % en 13 semaines
+     (sinon, les événements à répétition détruiraient de la valeur à long terme) */
+  shock(map, recover = true) {
     for (const k in map) {
       const pct = map[k];
+      if (recover && pct < 0) this.addModifier(k, -pct * 0.8 * 52 / 13, 13);
       S.market.prices[k] *= 1 + pct;
       const h = S.market.hist[k]; if (h.length) h[h.length - 1] = S.market.prices[k];
       S.fund.positions[k] *= 1 + pct;
@@ -1912,7 +1915,7 @@ const EVENTS = [
     weight: s => ({ bull: 1, range: 1, bear: 2, crisis: 1.5, bubble: 2 })[s.market.regime],
     prepare(s) {
       const drop = -(0.06 + rng() * 0.04) * sev();
-      Market.factorShock({ M: drop / 0.95, S: drop * 0.3 });
+      Market.factorShock({ M: drop / 0.95, S: drop * 0.3 }, false);   // rebond géré ci-dessous
       const p = { bull: 0.75, range: 0.65, bear: 0.4, crisis: 0.25, bubble: 0.5 }[s.market.regime];
       // Rebond rapide (5 sem., ~90 % de la baisse) avec probabilité p, sinon lent (15 sem., ~70 %)
       const fast = rng() < p, wk = fast ? 5 : 15, rec = fast ? 0.9 : 0.7;
