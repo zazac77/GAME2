@@ -168,6 +168,14 @@
   .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--c); margin-right: 4px; vertical-align: -1px; }
   .alloc-row { display: grid; grid-template-columns: 170px 30px 1fr 30px 70px 70px 110px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .alloc-row:last-child { border-bottom: none; }
+  .grp-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; padding: 4px 0; border-bottom: 2px solid var(--border); color: var(--accent); }
+  .heat { border-collapse: collapse; font-size: 10px; }
+  .heat td, .heat th { width: 30px; height: 26px; text-align: center; padding: 0; }
+  .heat th.v { writing-mode: vertical-rl; transform: rotate(180deg); height: 70px; font-weight: 600; color: var(--muted); }
+  .heat th.h { text-align: right; padding-right: 6px; width: auto; white-space: nowrap; color: var(--muted); }
+  .sens { display: inline-block; width: 34px; height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; position: relative; vertical-align: middle; }
+  .sens > i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+  .lockbox { border: 1px dashed var(--border); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); }
   .alloc-row input[type=range] { width: 100%; accent-color: var(--accent); }
   select, input[type=text], input[type=number] { background: var(--bg2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font-family: inherit; font-size: 12px; }
 
@@ -339,16 +347,57 @@ const CONFIG = {
   // --- Actifs ----------------------------------------------------------------
   // mu/vol : valeurs de référence (moyenne de long terme). fee : frais de
   // transaction selon la liquidité. tier : palier de déblocage.
+  // group : famille d'actifs (affichage). L : sensibilités aux facteurs
+  // communs (M marché, R taux, O pétrole/matières, S spéculation), normées.
+  // safe : valeur refuge (sa sensibilité au marché devient négative en crise).
+  // rmu : rendement annuel par régime pour les actifs absents de REGIMES.mu.
   ASSETS: {
-    equities:    { name: 'Actions',            icon: '📈', mu: 0.08, vol: 0.16, fee: 0.0005, liq: 'Très liquide', tier: 1, shortable: true,  color: '#34d399', alphaInfo: true },
-    bonds:       { name: 'Obligations',        icon: '🏦', mu: 0.03, vol: 0.05, fee: 0.0008, liq: 'Liquide',      tier: 1, shortable: false, color: '#60a5fa', alphaInfo: false },
-    commodities: { name: 'Matières premières', icon: '🛢️', mu: 0.05, vol: 0.20, fee: 0.0020, liq: 'Moyenne',      tier: 4, shortable: true,  color: '#f59e0b', alphaInfo: true },
-    fx:          { name: 'Devises',            icon: '💱', mu: 0.015, vol: 0.08, fee: 0.0003, liq: 'Très liquide', tier: 5, shortable: true,  color: '#a78bfa', alphaInfo: false },
-    crypto:      { name: 'Crypto',             icon: '🪙', mu: 0.20, vol: 0.70, fee: 0.0050, liq: 'Faible',       tier: 6, shortable: true,  color: '#f472b6', alphaInfo: true },
-    derivatives: { name: 'Dérivés (vente de vol.)', icon: '🧮', mu: 0.10, vol: 0.22, fee: 0.0030, liq: 'Moyenne', tier: 8, shortable: false, color: '#2dd4bf', alphaInfo: false },
-    emerging:    { name: 'Marchés émergents',  icon: '🌏', mu: 0.10, vol: 0.24, fee: 0.0035, liq: 'Faible',       tier: 11, shortable: true, color: '#fb923c', alphaInfo: true },
-    cash:        { name: 'Cash',               icon: '💵', mu: 0.0,  vol: 0.0,  fee: 0,      liq: 'Immédiate',    tier: 1, shortable: false, color: '#94a3b8', alphaInfo: false }
+    // --- Actions ---
+    equities:    { name: 'Actions monde (indice)', short: 'Monde', group: 'actions', icon: '📈', mu: 0.08, vol: 0.16, fee: 0.0005, liq: 'Très liquide', tier: 1, shortable: true, color: '#34d399', alphaInfo: true, L: { M: 0.95 } },
+    tech:        { name: 'Technologie', short: 'Tech', group: 'actions', icon: '💻', vol: 0.24, fee: 0.0006, liq: 'Très liquide', tier: 1, shortable: true, color: '#22d3ee', alphaInfo: true, L: { M: 0.85, R: -0.35, S: 0.25 },
+                   rmu: { bull: 0.285, range: 0.085, bear: -0.175, crisis: -0.595, bubble: 0.555 }, profile: 'Cyclique · très sensible aux taux' },
+    finance:     { name: 'Finance', short: 'Finance', group: 'actions', icon: '🏦', vol: 0.20, fee: 0.0006, liq: 'Très liquide', tier: 1, shortable: true, color: '#3b82f6', alphaInfo: true, L: { M: 0.85, R: 0.30 },
+                   rmu: { bull: 0.215, range: 0.095, bear: -0.115, crisis: -0.615, bubble: 0.335 }, profile: 'Cyclique · aime la hausse des taux' },
+    health:      { name: 'Santé', short: 'Santé', group: 'actions', icon: '💊', vol: 0.14, fee: 0.0006, liq: 'Très liquide', tier: 1, shortable: true, color: '#4ade80', alphaInfo: true, L: { M: 0.60, R: -0.10 },
+                   rmu: { bull: 0.125, range: 0.095, bear: 0.035, crisis: -0.185, bubble: 0.165 }, profile: 'Défensif' },
+    staples:     { name: 'Consommation de base', short: 'Conso.', group: 'actions', icon: '🛒', vol: 0.12, fee: 0.0006, liq: 'Très liquide', tier: 2, shortable: true, color: '#a3e635', alphaInfo: true, L: { M: 0.55, R: -0.15 },
+                   rmu: { bull: 0.09, range: 0.08, bear: 0.04, crisis: -0.11, bubble: 0.09 }, profile: 'Très défensif · faible volatilité' },
+    energy:      { name: 'Énergie', short: 'Énergie', group: 'actions', icon: '⛽', vol: 0.25, fee: 0.0007, liq: 'Liquide', tier: 2, shortable: true, color: '#f97316', alphaInfo: true, L: { M: 0.55, O: 0.70 },
+                   rmu: { bull: 0.20, range: 0.10, bear: -0.03, crisis: -0.46, bubble: 0.29 }, profile: 'Cyclique · suit le pétrole' },
+    industrials: { name: 'Industrie', short: 'Indus.', group: 'actions', icon: '🏭', vol: 0.19, fee: 0.0006, liq: 'Très liquide', tier: 3, shortable: true, color: '#94a3b8', alphaInfo: true, L: { M: 0.90, O: 0.15 },
+                   rmu: { bull: 0.225, range: 0.085, bear: -0.115, crisis: -0.475, bubble: 0.325 }, profile: 'Cyclique · suit la croissance' },
+    utilities:   { name: 'Services publics', short: 'Services', group: 'actions', icon: '⚡', vol: 0.14, fee: 0.0006, liq: 'Liquide', tier: 3, shortable: true, color: '#facc15', alphaInfo: true, L: { M: 0.45, R: -0.50 },
+                   rmu: { bull: 0.085, range: 0.085, bear: 0.055, crisis: -0.085, bubble: 0.055 }, profile: 'Défensif · quasi-obligataire' },
+    realestate:  { name: 'Immobilier coté', short: 'Immo', group: 'actions', icon: '🏢', vol: 0.20, fee: 0.0008, liq: 'Liquide', tier: 4, shortable: true, color: '#c084fc', alphaInfo: true, L: { M: 0.65, R: -0.60 },
+                   rmu: { bull: 0.175, range: 0.105, bear: -0.085, crisis: -0.465, bubble: 0.285 }, profile: 'Très sensible aux taux' },
+    emerging:    { name: 'Marchés émergents', short: 'Émerg.', group: 'actions', icon: '🌏', mu: 0.10, vol: 0.24, fee: 0.0035, liq: 'Faible', tier: 11, shortable: true, color: '#fb923c', alphaInfo: true, L: { M: 0.75, O: 0.30, R: -0.15 } },
+    // --- Obligations ---
+    bonds:       { name: "Obligations d'État", short: 'Oblig.', group: 'obligations', icon: '🏛️', mu: 0.03, vol: 0.05, fee: 0.0008, liq: 'Liquide', tier: 1, shortable: false, color: '#60a5fa', alphaInfo: false, safe: true, L: { M: -0.15, R: -0.80 }, profile: 'Refuge · baisse quand les taux montent' },
+    bonds_short: { name: 'Obligations courtes', short: 'Courtes', group: 'obligations', icon: '⏱️', vol: 0.015, fee: 0.0003, liq: 'Très liquide', tier: 2, shortable: false, color: '#93c5fd', alphaInfo: false, safe: true, L: { M: -0.05, R: -0.50 },
+                   rmu: { bull: 0.03, range: 0.03, bear: 0.035, crisis: 0.03, bubble: 0.03 }, profile: 'Quasi-cash · peu sensible aux taux' },
+    bonds_long:  { name: 'Obligations longues', short: 'Longues', group: 'obligations', icon: '📜', vol: 0.11, fee: 0.0008, liq: 'Liquide', tier: 3, shortable: false, color: '#1d4ed8', alphaInfo: false, safe: true, L: { M: -0.20, R: -0.92 },
+                   rmu: { bull: 0.02, range: 0.04, bear: 0.08, crisis: 0.15, bubble: -0.02 }, profile: 'Refuge en crise · très sensible aux taux' },
+    highyield:   { name: 'Haut rendement', short: 'High yield', group: 'obligations', icon: '🎲', vol: 0.10, fee: 0.0015, liq: 'Moyenne', tier: 4, shortable: false, color: '#e879f9', alphaInfo: false, L: { M: 0.70, R: -0.20 },
+                   rmu: { bull: 0.1, range: 0.08, bear: 0, crisis: -0.33, bubble: 0.11 }, profile: 'Rendement élevé · se comporte comme des actions en crise' },
+    inflation:   { name: 'Obligations indexées inflation', short: 'Inflation', group: 'obligations', icon: '🌡️', vol: 0.06, fee: 0.0010, liq: 'Liquide', tier: 5, shortable: false, color: '#5eead4', alphaInfo: false, safe: true, L: { R: -0.50, O: 0.40 },
+                   rmu: { bull: 0.03, range: 0.03, bear: 0.035, crisis: 0.04, bubble: 0.03 }, profile: "Protège des chocs d'inflation" },
+    // --- Alternatifs ---
+    commodities: { name: 'Matières premières', short: 'Matières', group: 'alternatifs', icon: '🛢️', mu: 0.05, vol: 0.20, fee: 0.0020, liq: 'Moyenne', tier: 4, shortable: true, color: '#f59e0b', alphaInfo: true, L: { M: 0.30, O: 0.80 } },
+    fx:          { name: 'Devises', short: 'Devises', group: 'alternatifs', icon: '💱', mu: 0.015, vol: 0.08, fee: 0.0003, liq: 'Très liquide', tier: 5, shortable: true, color: '#a78bfa', alphaInfo: false, L: { M: 0.10, R: 0.30 } },
+    crypto:      { name: 'Crypto', short: 'Crypto', group: 'alternatifs', icon: '🪙', mu: 0.20, vol: 0.70, fee: 0.0050, liq: 'Faible', tier: 6, shortable: true, color: '#f472b6', alphaInfo: true, L: { M: 0.35, S: 0.80 } },
+    derivatives: { name: 'Dérivés (vente de vol.)', short: 'Dérivés', group: 'alternatifs', icon: '🧮', mu: 0.10, vol: 0.22, fee: 0.0030, liq: 'Moyenne', tier: 8, shortable: false, color: '#2dd4bf', alphaInfo: false, L: { M: 0.70, S: 0.20 } },
+    cash:        { name: 'Cash', short: 'Cash', group: 'cash', icon: '💵', mu: 0.0, vol: 0.0, fee: 0, liq: 'Immédiate', tier: 1, shortable: false, color: '#64748b', alphaInfo: false, L: {} }
   },
+  ASSET_GROUPS: { actions: '📈 Actions', obligations: '🏛️ Obligations', alternatifs: '🧪 Alternatifs' },
+  // Facteurs communs. ref : volatilité de référence qui convertit un choc de
+  // facteur en variation de prix (un choc M de −5 % fait ≈ −5 % aux actions monde).
+  FACTORS: {
+    M: { name: 'Marché', ref: 0.16 },
+    R: { name: 'Taux', ref: 0.10 },
+    O: { name: 'Pétrole / matières', ref: 0.20 },
+    S: { name: 'Spéculation', ref: 0.70 }
+  },
+
 
   // --- Régimes de marché -------------------------------------------------------
   // mu : rendement annuel espéré de chaque actif dans ce régime.
@@ -356,9 +405,9 @@ const CONFIG = {
   // corrélations vers la matrice de stress (0 = normal, 1 = tout corrélé).
   REGIMES: {
     bull:   { name: 'Haussier', icon: '🐂', volMult: 0.85, corrStress: 0.0,
-              mu: { equities: 0.20, bonds: 0.025, commodities: 0.12, fx: 0.012, crypto: 0.70, derivatives: 0.16, emerging: 0.27 } },
+              mu: { equities: 0.215, bonds: 0.025, commodities: 0.12, fx: 0.012, crypto: 0.70, derivatives: 0.16, emerging: 0.27 } },
     range:  { name: 'Latéral',  icon: '↔️', volMult: 0.8, corrStress: 0.0,
-              mu: { equities: 0.08, bonds: 0.035, commodities: 0.06, fx: 0.01, crypto: 0.30, derivatives: 0.14, emerging: 0.09 } },
+              mu: { equities: 0.09, bonds: 0.035, commodities: 0.06, fx: 0.01, crypto: 0.30, derivatives: 0.14, emerging: 0.09 } },
     bear:   { name: 'Baissier', icon: '🐻', volMult: 1.3, corrStress: 0.25,
               mu: { equities: -0.10, bonds: 0.05, commodities: -0.03, fx: 0.02, crypto: -0.30, derivatives: 0.0, emerging: -0.15 } },
     crisis: { name: 'Crise',    icon: '🔥', volMult: 2.2, corrStress: 0.65,
@@ -375,17 +424,6 @@ const CONFIG = {
     crisis: { bull: 0.000, range: 0.060, bear: 0.140, crisis: 0.800, bubble: 0.000 },
     bubble: { bull: 0.045, range: 0.000, bear: 0.000, crisis: 0.080, bubble: 0.875 }
   },
-  // Corrélations « normales » entre actifs risqués
-  BASE_CORR: {
-    'equities|bonds': -0.2, 'equities|commodities': 0.3, 'equities|fx': 0.1, 'equities|crypto': 0.35, 'equities|derivatives': 0.6, 'equities|emerging': 0.7,
-    'bonds|commodities': -0.1, 'bonds|fx': 0.0, 'bonds|crypto': -0.05, 'bonds|derivatives': -0.2, 'bonds|emerging': -0.1,
-    'commodities|fx': 0.2, 'commodities|crypto': 0.2, 'commodities|derivatives': 0.25, 'commodities|emerging': 0.45,
-    'fx|crypto': 0.1, 'fx|derivatives': 0.05, 'fx|emerging': 0.3,
-    'crypto|derivatives': 0.3, 'crypto|emerging': 0.35,
-    'derivatives|emerging': 0.5
-  },
-  // Matrice de stress (crise) : actifs risqués très corrélés, obligations refuge
-  STRESS_CORR: { risky: 0.85, fx: 0.3, bondsRisky: -0.4, bondsFx: -0.14 },
 
   // --- Risque -----------------------------------------------------------------
   RISK_VOL_SCALE: 0.30,         // risque = 100 * (1 - exp(-volPortefeuille / 0.30))
@@ -454,10 +492,10 @@ const INVESTOR_TYPES = {
 /* Paliers / locaux. bonus : effets chiffrés (voir tierBonus()). */
 const TIERS = [
   { name: 'Prop firm', min: 0, local: 'Desk loué chez une prop firm', cap: 2, icon: '🎯', bg: ['#17120d', '#2b2117'], accent: '#d9a066', bonusTxt: '—', bonus: {}, unlocks: 'Challenge prop firm, puis lancement du fonds' },
-  { name: 'Coworking', min: 5e4, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI' },
-  { name: 'Petit bureau', min: 2.5e5, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales' },
-  { name: 'Boutique', min: 1e6, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, RH' },
-  { name: 'Étage', min: 5e6, local: 'Étage entier', cap: 15, icon: '🏢', bg: ['#110f20', '#262046'], accent: '#a78bfa', bonusTxt: '+15 % vitesse trading', bonus: { trading: 0.15 }, unlocks: 'Levier 2x, short, devises, UHNWI' },
+  { name: 'Coworking', min: 5e4, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI, conso. de base, énergie, obligations courtes' },
+  { name: 'Petit bureau', min: 2.5e5, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales, industrie, services publics, obligations longues' },
+  { name: 'Boutique', min: 1e6, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, immobilier coté, haut rendement, RH' },
+  { name: 'Étage', min: 5e6, local: 'Étage entier', cap: 15, icon: '🏢', bg: ['#110f20', '#262046'], accent: '#a78bfa', bonusTxt: '+15 % vitesse trading', bonus: { trading: 0.15 }, unlocks: 'Levier 2x, short, devises, obligations indexées, UHNWI' },
   { name: 'Immeuble', min: 2.5e7, local: 'Immeuble dédié', cap: 25, icon: '🏛️', bg: ['#15110e', '#33261b'], accent: '#f0b86e', bonusTxt: '+20 % conformité', bonus: { compliance: 0.20 }, unlocks: 'Compliance officer, crypto' },
   { name: 'Tour locale', min: 1e8, local: 'Tour de 20 étages', cap: 40, icon: '🌆', bg: ['#0c1323', '#1e2f55'], accent: '#60a5fa', bonusTxt: '+25 % AUM retail', bonus: { retail: 0.25 }, unlocks: 'Institutionnels, levier 5x' },
   { name: 'Siège régional', min: 5e8, local: 'Campus régional', cap: 70, icon: '🏙️', bg: ['#0b1919', '#173c3c'], accent: '#2dd4bf', bonusTxt: '+30 % intérêt institutionnel', bonus: { institutional: 0.30 }, unlocks: 'Quant, dérivés' },
@@ -613,7 +651,8 @@ function createState(difficulty, fundName, legacy) {
       lastMeans: Object.fromEntries(RISKY.map(k => [k, 0])),
       mods: [],
       perceived: 'range',
-      forecasts: {}
+      forecasts: {},
+      regStats: {}
     },
     fund: {
       positions, cash: 0, target, stopLoss, refPrice,
@@ -652,40 +691,46 @@ function createState(difficulty, fundName, legacy) {
    4. MARKET — prix, régimes, corrélations
    ============================================================================= */
 const Market = {
-  _cholCache: {},
+  _loadCache: {},
 
-  /* Matrice de corrélation d'un régime : mélange matrice normale / stress */
-  corrMatrix(regime) {
-    const stress = CONFIG.REGIMES[regime].corrStress;
-    const n = RISKY.length;
-    const M = Array.from({ length: n }, () => new Array(n).fill(0));
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        if (i === j) { M[i][j] = 1; continue; }
-        const a = RISKY[i], b = RISKY[j];
-        const base = CONFIG.BASE_CORR[a + '|' + b] ?? CONFIG.BASE_CORR[b + '|' + a] ?? 0;
-        let st;
-        const sc = CONFIG.STRESS_CORR;
-        const isB = x => x === 'bonds', isF = x => x === 'fx';
-        if ((isB(a) && isF(b)) || (isF(a) && isB(b))) st = sc.bondsFx;
-        else if (isB(a) || isB(b)) st = sc.bondsRisky;
-        else if (isF(a) || isF(b)) st = sc.fx;
-        else st = sc.risky;
-        M[i][j] = base + (st - base) * stress;
-      }
+  /* Sensibilités aux facteurs dans un régime : en période de stress, la
+     sensibilité au marché se rapproche de 0,9 (tout baisse ensemble) et les
+     valeurs refuges deviennent négativement corrélées au marché. */
+  loadings(regime) {
+    if (this._loadCache[regime]) return this._loadCache[regime];
+    const st = CONFIG.REGIMES[regime].corrStress;
+    const out = {};
+    for (const k of RISKY) {
+      const A = CONFIG.ASSETS[k], L = Object.assign({ M: 0, R: 0, O: 0, S: 0 }, A.L);
+      const tgt = A.safe ? -0.4 : (L.M > 0.3 ? 0.9 : L.M);
+      const x = { M: L.M + (tgt - L.M) * st, R: L.R * (1 - st * 0.5), O: L.O * (1 - st * 0.5), S: L.S * (1 - st * 0.5) };
+      const n = Math.hypot(x.M, x.R, x.O, x.S);
+      if (n > 0.97) for (const f in x) x[f] *= 0.97 / n;
+      out[k] = x;
     }
-    return M;
+    return (this._loadCache[regime] = out);
   },
-  chol(regime) {
-    if (!this._cholCache[regime]) this._cholCache[regime] = cholesky(this.corrMatrix(regime));
-    return this._cholCache[regime];
+  /* Corrélation théorique entre deux actifs = produit scalaire des sensibilités */
+  corrMatrix(regime) {
+    const Ld = this.loadings(regime);
+    return RISKY.map(a => RISKY.map(b => a === b ? 1 : ['M', 'R', 'O', 'S'].reduce((t, f) => t + Ld[a][f] * Ld[b][f], 0)));
   },
+  /* Impact (variation de prix) d'un choc sur les facteurs, ex. { M: -0.05, R: 0.04 } */
+  impact(k, x) {
+    const A = CONFIG.ASSETS[k], L = A.L || {};
+    let r = 0;
+    for (const f in x) r += (L[f] || 0) * (A.vol / CONFIG.FACTORS[f].ref) * x[f];
+    return clamp(r, -0.6, 1);
+  },
+  factorShock(x) { const map = {}; for (const k of RISKY) { const v = this.impact(k, x); if (Math.abs(v) > 1e-4) map[k] = v; } this.shock(map); return map; },
+  factorMod(x, weeks) { for (const k of RISKY) { const v = this.impact(k, x); if (Math.abs(v) > 0.002) this.addModifier(k, v, weeks); } },
 
   /* Rendement annuel espéré d'un actif dans le régime courant (+ modificateurs) */
   expectedMu(k, regime) {
     const m = S.market;
     const mode = CONFIG.MODES[S.difficulty];
-    let mu = CONFIG.REGIMES[regime || m.regime].mu[k];
+    const rg = regime || m.regime;
+    let mu = CONFIG.REGIMES[rg].mu[k] ?? CONFIG.ASSETS[k].rmu[rg];
     if (mu < 0) mu *= mode.negDriftMult;
     for (const md of m.mods) if (md.k === k || md.k === 'all') mu += md.mu;
     return mu;
@@ -731,22 +776,24 @@ const Market = {
     const jump = {};
     if (prev && m.regime === 'crisis') {
       const sev = CONFIG.MODES[S.difficulty].eventSeverity;
+      const jx = prev === 'bubble' ? { M: -0.08, S: -0.25 } : { M: -0.05, S: -0.08 };
+      for (const k of RISKY) jump[k] = this.impact(k, jx);
       if (prev === 'bubble') {
-        Object.assign(jump, { crypto: -0.25, equities: -0.08, emerging: -0.10, commodities: -0.06, derivatives: -0.10 });
         if (!silent) { Game.log('💥 La bulle éclate ! Krach sur les actifs risqués.', 'bad'); UI.toast('💥 La bulle éclate !', 'bad'); }
       } else {
-        Object.assign(jump, { equities: -0.05, emerging: -0.07, crypto: -0.10, derivatives: -0.08, commodities: -0.04 });
         if (!silent) UI.toast('🔥 Le marché entre en crise.', 'bad');
       }
       for (const k in jump) jump[k] *= sev;
       if (!silent) S.stats.crises++;
     }
     const mode = CONFIG.MODES[S.difficulty];
-    const L = this.chol(m.regime);
-    const z = RISKY.map(() => gauss());
-    RISKY.forEach((k, i) => {
-      let e = 0;
-      for (let j = 0; j <= i; j++) e += L[i][j] * z[j];
+    // Modèle à facteurs : choc = Σ sensibilité × facteur commun + part propre
+    const Ld = this.loadings(m.regime);
+    const F = { M: gauss(), R: gauss(), O: gauss(), S: gauss() };
+    m.lastFactors = F;
+    RISKY.forEach(k => {
+      const l = Ld[k];
+      let e = l.M * F.M + l.R * F.R + l.O * F.O + l.S * F.S + Math.sqrt(Math.max(0.01, 1 - l.M * l.M - l.R * l.R - l.O * l.O - l.S * l.S)) * gauss();
       if (rng() < CONFIG.JUMP_PROB) e *= CONFIG.JUMP_MULT;
       const mu = this.expectedMu(k);
       const vol = this.effVol(k);
@@ -757,7 +804,13 @@ const Market = {
       m.lastReturns[k] = r;
       m.prices[k] *= 1 + r;
       m.hist[k].push(m.prices[k]);
-      if (m.hist[k].length > 52) m.hist[k].shift();
+      if (m.hist[k].length > 60) m.hist[k].shift();
+      // Statistiques par régime (onglet Analyse)
+      if (!silent) {
+        const rs = (m.regStats[k] = m.regStats[k] || {});
+        const c = (rs[m.regime] = rs[m.regime] || { s: 0, n: 0 });
+        c.s += Math.log(1 + r); c.n++;
+      }
     });
     if (!silent) {
       if (prev) Game.regimeReport(prev);
@@ -963,7 +1016,7 @@ const Portfolio = {
     if (CONFIG.ASSETS[k].alphaInfo) a += Team.infoQuality() * 0.025;
     a += e.quantAlpha + (e.spec[k] || 0);
     if (Progression.upg('autostrat') > 0) a += 0.01;
-    if (k === 'equities' || k === 'emerging') a += Strat.b('alphaEq');
+    if (CONFIG.ASSETS[k].group === 'actions') a += Strat.b('alphaEq');
     if (k === 'crypto') a += Strat.b('alphaCrypto');
     a += Strat.b('alphaAll');
     return a;
@@ -1056,7 +1109,7 @@ const Portfolio = {
     return { t: '⚪ Neutre', c: '' };
   },
   /* Marge d'erreur de la prévision (dépend de la qualité d'information) */
-  forecastError(k) { return 0.005 + 0.35 * (1 - Team.infoQuality()) * (CONFIG.ASSETS[k].vol + 0.03); },
+  forecastError(k) { return (0.005 + 0.35 * (1 - Team.infoQuality()) * (CONFIG.ASSETS[k].vol + 0.03)) * (Team.effects().spec[k] ? 0.6 : 1); },
   /* Allocation « selon les prévisions » : poids ∝ rendement prévu / variance */
   forecastTarget() {
     const sc = {};
@@ -1073,14 +1126,29 @@ const Portfolio = {
 
   /* Préréglages d'allocation (adaptés aux actifs débloqués) */
   presets() {
-    const u = k => Market.isUnlocked(k);
-    return {
-      prudent:   { label: '🛡️ Prudent',   t: { equities: 20, bonds: 60 } },
-      equilibre: { label: '⚖️ Équilibré', t: Object.assign({ equities: 50, bonds: 35 }, u('commodities') ? { commodities: 5, bonds: 30 } : {}) },
-      dynamique: { label: '🚀 Dynamique', t: Object.assign({ equities: 75, bonds: 15 }, u('commodities') ? { equities: 65, commodities: 10 } : {}, u('crypto') ? { equities: 60, crypto: 5 } : {}) },
+    // Construit une allocation ; un actif verrouillé est remplacé par son repli
+    const mk = list => { const t = {}; for (const [k, w, fb] of list) { const key = Market.isUnlocked(k) ? k : fb; if (key) t[key] = (t[key] || 0) + w; } return t; };
+    const out = {
+      prudent:   { label: '🛡️ Prudent', t: mk([['equities', 10], ['health', 5, 'equities'], ['staples', 5, 'equities'], ['utilities', 5, 'equities'], ['bonds', 35], ['bonds_short', 20, 'bonds'], ['inflation', 5, 'bonds']]) },
+      equilibre: { label: '⚖️ Équilibré', t: mk([['equities', 30], ['tech', 8, 'equities'], ['health', 6, 'equities'], ['finance', 6, 'equities'], ['bonds', 25], ['bonds_long', 5, 'bonds'], ['highyield', 5, 'bonds'], ['commodities', 5, 'bonds']]) },
+      dynamique: { label: '🚀 Dynamique', t: mk([['equities', 30], ['tech', 15, 'equities'], ['finance', 8, 'equities'], ['industrials', 8, 'equities'], ['energy', 5, 'equities'], ['commodities', 7, 'equities'], ['crypto', 5, 'equities'], ['bonds', 5], ['highyield', 5, 'bonds']]) },
+      rotation:  { label: '🔄 Rotation sectorielle', t: mk(this.rotationList()) },
       prevision: { label: '🔮 Selon les prévisions', t: this.forecastTarget() }
     };
+    if (Analysis.optimizerAvailable()) out.optimise = { label: '⚙️ Optimisé (quant)', t: Analysis.optimal().t };
+    return out;
   },
+  /* Rotation sectorielle selon le régime perçu : cycliques en hausse, défensives en baisse */
+  rotationList() {
+    switch (S.market.perceived) {
+      case 'bull':   return [['equities', 20], ['tech', 20, 'equities'], ['industrials', 15, 'equities'], ['finance', 15, 'equities'], ['energy', 5, 'equities'], ['highyield', 10, 'bonds'], ['bonds', 5]];
+      case 'bubble': return [['tech', 25, 'equities'], ['equities', 20], ['crypto', 10, 'equities'], ['industrials', 10, 'equities'], ['finance', 10, 'equities'], ['bonds', 15]];
+      case 'bear':   return [['health', 15, 'equities'], ['staples', 15, 'equities'], ['utilities', 15, 'bonds'], ['bonds_long', 20, 'bonds'], ['bonds', 15], ['inflation', 5, 'bonds']];
+      case 'crisis': return [['bonds_long', 30, 'bonds'], ['bonds', 20], ['bonds_short', 20, 'bonds'], ['staples', 5, 'bonds'], ['health', 5, 'bonds']];
+      default:       return [['equities', 25], ['health', 10, 'equities'], ['staples', 10, 'equities'], ['finance', 10, 'equities'], ['tech', 10, 'equities'], ['bonds', 25]];
+    }
+  },
+
   applyPreset(id) {
     const p = this.presets()[id]; if (!p) return;
     for (const k of RISKY) S.fund.target[k] = 0;
@@ -1419,7 +1487,7 @@ const Investors = {
   typeBonus(t) {
     if (t === 'retail') return 1 + Progression.tierBonus('retail') + Strat.b('retail');
     if (t === 'hnwi' || t === 'uhnwi') return 1 + Strat.b('hnwi');
-    if (t === 'institutional' || t === 'pension' || t === 'sovereign') return 1 + Progression.tierBonus('institutional') + Strat.b('inst');
+    if (t === 'institutional' || t === 'pension' || t === 'sovereign') return (1 + Progression.tierBonus('institutional') + Strat.b('inst')) * (1 + Analysis.diversification().score / 200);
     return 1;
   },
 
@@ -1696,6 +1764,7 @@ const Prop = {
 };
 
 /* Helpers d'effets (utilisés par les événements) */
+function sellAsset(k, frac) { const f = S.fund; if (!f.target[k]) return; f.target[k] = Math.round(f.target[k] * (1 - frac)); Portfolio.rebalance(); }
 function confAll(d) { for (const i of Investors.clients()) i.conf = clamp(i.conf + d, 0, 100); }
 function addRep(d) { S.reputation = clamp(S.reputation + d, 0, 100); }
 function addCompliance(d) { S.compliance = clamp(S.compliance + d, 0, 100); }
@@ -1813,7 +1882,7 @@ const Risk = {
    ============================================================================= */
 /* --- Stratégies de fonds (choisies au lancement) --- */
 const STRATEGIES = {
-  longonly: { name: 'Long-only actions', icon: '📈', desc: 'Alpha +1 %/an sur actions et émergents. Particuliers et HNWI +20 %.', b: { alphaEq: 0.01, retail: 0.2, hnwi: 0.2 } },
+  longonly: { name: 'Long-only actions', icon: '📈', desc: 'Alpha +1 %/an sur toutes les actions (indices et secteurs). Particuliers et HNWI +20 %.', b: { alphaEq: 0.01, retail: 0.2, hnwi: 0.2 } },
   macro:    { name: 'Global macro', icon: '🌐', desc: "Qualité d'information +15 pts, volatilité −5 %. HNWI/UHNWI +30 %.", b: { info: 0.15, volRed: 0.05, hnwi: 0.3 } },
   quant:    { name: 'Quantitatif', icon: '🧮', desc: 'Frais −30 %, recherche +30 %, alpha +0,5 %/an partout. Institutionnels +25 %.', b: { fee: 0.3, rp: 0.3, alphaAll: 0.005, inst: 0.25 } },
   crypto:   { name: 'Actifs numériques', icon: '🪙', desc: 'Crypto débloquée dès le lancement, alpha crypto +4 %/an, particuliers +40 %. Conformité −8.', b: { cryptoEarly: 1, alphaCrypto: 0.04, retail: 0.4, compliance: -8 } },
@@ -1828,11 +1897,11 @@ const EVENTS = [
     weight: s => ({ bull: 1, range: 1, bear: 2, crisis: 1.5, bubble: 2 })[s.market.regime],
     prepare(s) {
       const drop = -(0.06 + rng() * 0.04) * sev();
-      Market.shock({ equities: drop, emerging: drop * 1.3, crypto: drop * 1.8, commodities: drop * 0.6, derivatives: drop * 1.5 });
+      Market.factorShock({ M: drop / 0.95, S: drop * 0.3 });
       const p = { bull: 0.75, range: 0.65, bear: 0.4, crisis: 0.25, bubble: 0.5 }[s.market.regime];
       // Rebond rapide (5 sem., ~90 % de la baisse) avec probabilité p, sinon lent (15 sem., ~70 %)
       const fast = rng() < p, wk = fast ? 5 : 15, rec = fast ? 0.9 : 0.7;
-      for (const [k, m] of [['equities', 1], ['emerging', 1.3], ['crypto', 1.8], ['derivatives', 1.5]]) Market.addModifier(k, -drop * m * rec * 52 / wk, wk);
+      Market.factorMod({ M: -drop / 0.95 * rec * 52 / wk }, wk);
       const est = clamp(p + gauss() * 0.25 * (1 - Team.infoQuality()), 0.05, 0.95);
       return { drop, est, cost: 3 * U() };
     },
@@ -1864,12 +1933,12 @@ const EVENTS = [
     weight: s => s.market.regime === 'bubble' || s.market.regime === 'bull' ? 1.5 : 0.8,
     prepare(s) {
       const k = sev();
-      Market.shock({ bonds: -0.03 * k, equities: -0.025 * k, emerging: -0.04 * k, crypto: -0.06 * k });
-      Market.addModifier('bonds', 0.04, 26);
-      Market.addModifier('equities', -0.03, 12);
+      Market.factorShock({ R: 0.075 * k, M: -0.02 * k });
+      Market.factorMod({ R: -0.10 }, 26);   // les taux se détendent ensuite : les obligations récupèrent
+      Market.factorMod({ M: -0.03 }, 12);
       return { cost: 8 * U(), bondsW: Portfolio.weights().bonds };
     },
-    text: p => `La banque centrale relève ses taux de 75 points de base. Les obligations décrochent (−3 %), les actions tanguent. Vos obligations pèsent ${fmtPct(p.bondsW, 0)} du fonds.`,
+    text: p => `La banque centrale relève ses taux de 75 points de base. Les obligations décrochent (longues ≈ −7 %), l'immobilier et la tech souffrent, la finance profite. Vos obligations pèsent ${fmtPct(p.bondsW, 0)} du fonds.`,
     options: [
       { label: 'Réduire la duration', hint: () => 'La moitié des obligations passe en cash (frais) · risque −3', apply() { const f = S.fund; const b = f.target.bonds; f.target.bonds = Math.round(b / 2); Portfolio.rebalance(); riskShock(-3); } },
       { label: 'Ne rien changer', hint: () => '🤝 confiance −2 (clients inquiets)', apply() { confAll(-2); } },
@@ -1950,7 +2019,7 @@ const EVENTS = [
     weight: () => 0.4,
     prepare() {
       const k = sev();
-      Market.shock({ equities: -0.10 * k, emerging: -0.14 * k, commodities: -0.12 * k, crypto: -0.15 * k, derivatives: -0.12 * k, bonds: 0.02 });
+      Market.factorShock({ M: -0.105 * k, O: -0.08 * k, R: -0.05 });
       Market.forceRegime('crisis', randInt(5, 9), { regime: 'bull', p: 0.6 });
       return { cost: 8 * U() };
     },
@@ -2030,8 +2099,8 @@ const EVENTS = [
     id: 'oil_shock', icon: '🛢️', title: 'Choc pétrolier',
     cond: s => s.tier >= 4, cooldown: 40,
     weight: () => 0.8,
-    prepare() { const k = sev(); Market.shock({ commodities: 0.15, equities: -0.03 * k, emerging: -0.05 * k }); Market.addModifier('commodities', -0.15, 12); return { cost: 5 * U() }; },
-    text: () => `Une crise géopolitique fait bondir le baril de 15 %. Les analystes doutent que la hausse tienne.`,
+    prepare() { const k = sev(); Market.factorShock({ O: 0.19, M: -0.03 * k }); Market.factorMod({ O: -0.19 }, 12); return { cost: 5 * U() }; },
+    text: () => `Une crise géopolitique fait bondir le baril : matières premières et énergie +15 %, le reste du marché recule. Les analystes doutent que la hausse tienne.`,
     options: [
       { label: 'Prendre les bénéfices', hint: () => 'Moitié des matières premières vendue · ⭐ +1', apply() { S.fund.target.commodities = Math.round(S.fund.target.commodities / 2); Portfolio.rebalance(); addRep(1); } },
       { label: 'Doubler la mise', hint: () => '+5 % de matières premières · risque +6', apply() { Portfolio.shiftInto('commodities', 0.05); riskShock(6); } },
@@ -2048,6 +2117,73 @@ const EVENTS = [
       { label: 'Plaider coupable et transiger', hint: p => `💰 −${fmtMoney(p.deal)} · ⭐ −8 · 🛡️ +10`, apply(p) { payCash(p.deal); addRep(-8); addCompliance(10); S.events.flags.insider = false; } },
       { label: 'Se battre en justice', hint: p => `50 % : relaxe (⭐ −3) · 50 % : amende ${fmtMoney(p.fine)}, ⭐ −15`, apply(p) { if (rng() < 0.5) { addRep(-3); Game.log('Relaxe obtenue au tribunal.', 'good'); } else { payCash(p.fine); addRep(-15); Game.log('Condamnation : lourde amende.', 'bad'); } S.events.flags.insider = false; } },
       { label: 'Faire porter le chapeau à un employé', hint: () => 'Licenciement du meilleur trader/analyste · 🛡️ −10 · ⭐ −4', apply() { const e = S.team.employees.slice().sort((a, b) => Team.power(b) - Team.power(a))[0]; if (e) Team.fire(e.id, true); addCompliance(-10); addRep(-4); S.events.flags.insider = rng() < 0.3; } }
+    ]
+  },
+  /* ---------- Événements sectoriels ---------- */
+  {
+    id: 'tech_antitrust', icon: '⚖️', title: 'Offensive antitrust contre la tech',
+    cond: () => Market.isUnlocked('tech'), cooldown: 40, weight: () => 0.7,
+    prepare() { Market.shock({ tech: -0.08 * sev() }); Market.addModifier('tech', -0.10, 8); return { cost: 4 * U(), w: Portfolio.weights().tech || 0 }; },
+    text: p => `Les régulateurs lancent une procédure contre les géants de la tech (−8 %). Votre exposition au secteur : ${fmtPct(p.w, 0)} du fonds.`,
+    options: [
+      { label: 'Alléger la tech de moitié', hint: () => 'Vente avec frais · risque −3', apply() { sellAsset('tech', 0.5); riskShock(-3); } },
+      { label: 'Renforcer à bon prix', hint: () => '+5 % de tech · risque +5', apply() { Portfolio.shiftInto('tech', 0.05); riskShock(5); } },
+      { label: 'Acheter une protection', hint: p => `💰 −${fmtMoney(p.cost)} · risque −4`, apply(p) { payCash(p.cost); riskShock(-4); } }
+    ]
+  },
+  {
+    id: 'pharma', icon: '🧬', title: 'Médicament révolutionnaire approuvé',
+    cond: () => Market.isUnlocked('health'), cooldown: 40, weight: () => 0.6,
+    prepare() { Market.shock({ health: 0.06 }); Market.addModifier('health', 0.10, 6); return {}; },
+    text: () => `Un traitement majeur reçoit son autorisation : le secteur santé bondit de 6 % et l'élan pourrait durer quelques semaines.`,
+    options: [
+      { label: 'Prendre les bénéfices', hint: () => 'Moitié de la santé vendue · ⭐ +1', apply() { sellAsset('health', 0.5); addRep(1); } },
+      { label: 'Surfer la tendance', hint: () => '+5 % de santé · risque +3', apply() { Portfolio.shiftInto('health', 0.05); riskShock(3); } },
+      { label: 'Ne rien changer', hint: () => '🔬 +2 (vous étudiez le dossier)', apply() { S.rp += 2; } }
+    ]
+  },
+  {
+    id: 'bank_failure', icon: '🏚️', title: "Faillite d'une grande banque",
+    cond: s => s.tier >= 3 && Market.isUnlocked('finance'), cooldown: 60, weight: s => s.market.regime === 'bear' || s.market.regime === 'crisis' ? 1.5 : 0.5,
+    prepare() { const k = sev(); Market.factorShock({ M: -0.03 * k }); Market.shock({ finance: -0.12 * k, highyield: -0.04 * k }); return { cost: 8 * U() }; },
+    text: () => `Une banque systémique fait faillite : la finance plonge (−12 %), le crédit à haut rendement se tend, le marché recule.`,
+    options: [
+      { label: 'Sortir complètement de la finance', hint: () => 'Vente de toute la finance (frais) · risque −5', apply() { sellAsset('finance', 1); riskShock(-5); } },
+      { label: 'Racheter les survivants', hint: () => '+5 % de finance · risque +8', apply() { Portfolio.shiftInto('finance', 0.05); riskShock(8); } },
+      { label: "Audit d'exposition aux contreparties", hint: p => `💰 −${fmtMoney(p.cost)} · 🛡️ +4 · risque −5`, apply(p) { payCash(p.cost); addCompliance(4); riskShock(-5); } }
+    ]
+  },
+  {
+    id: 'heatwave', icon: '🔥', title: 'Canicule historique',
+    cond: s => s.tier >= 3, cooldown: 50, weight: () => 0.6,
+    prepare() { Market.shock({ utilities: 0.05, energy: 0.04 }); return {}; },
+    text: () => `Une vague de chaleur record fait exploser la demande d'électricité : services publics +5 %, énergie +4 %.`,
+    options: [
+      { label: 'Prendre les bénéfices', hint: () => 'Moitié des services publics vendue', apply() { sellAsset('utilities', 0.5); } },
+      { label: 'Renforcer les services publics', hint: () => '+5 % · risque +2', apply() { Portfolio.shiftInto('utilities', 0.05); riskShock(2); } },
+      { label: 'Ne rien changer', hint: () => '🔬 +2', apply() { S.rp += 2; } }
+    ]
+  },
+  {
+    id: 'cre_crisis', icon: '🏢', title: "Crise de l'immobilier commercial",
+    cond: s => s.tier >= 4, cooldown: 60, weight: s => s.market.regime === 'bear' ? 1.3 : 0.6,
+    prepare() { const k = sev(); Market.shock({ realestate: -0.10 * k, finance: -0.04 * k, highyield: -0.03 * k }); Market.addModifier('realestate', -0.12, 12); return { cost: 5 * U() }; },
+    text: () => `Les bureaux se vident, les foncières plongent (−10 %) et les banques prêteuses vacillent.`,
+    options: [
+      { label: "Sortir de l'immobilier", hint: () => "Vente de tout l'immobilier coté · risque −3", apply() { sellAsset('realestate', 1); riskShock(-3); } },
+      { label: 'Acheter des actifs décotés', hint: () => '+5 % d’immobilier · risque +6', apply() { Portfolio.shiftInto('realestate', 0.05); riskShock(6); } },
+      { label: 'Couvrir le risque de crédit', hint: p => `💰 −${fmtMoney(p.cost)} · risque −4`, apply(p) { payCash(p.cost); riskShock(-4); } }
+    ]
+  },
+  {
+    id: 'inflation_surprise', icon: '🌡️', title: "Surprise d'inflation",
+    cond: s => s.tier >= 5, cooldown: 40, weight: () => 0.8,
+    prepare() { const k = sev(); Market.factorShock({ R: 0.05 * k, O: 0.05 }); Market.shock({ inflation: 0.03 }); return {}; },
+    text: () => `L'inflation dépasse largement les attentes : les taux montent, les obligations classiques souffrent, les indexées et les matières premières résistent.`,
+    options: [
+      { label: 'Basculer vers les obligations indexées', hint: () => 'Moitié des obligations d’État → indexées (frais)', apply() { const f = S.fund; const x = Math.round(f.target.bonds / 2); f.target.bonds -= x; f.target.inflation += x; Portfolio.rebalance(); } },
+      { label: 'Se couvrir avec des matières premières', hint: () => '+5 % de matières premières · risque +3', apply() { Portfolio.shiftInto('commodities', 0.05); riskShock(3); } },
+      { label: 'Attendre la réaction de la banque centrale', hint: () => '🤝 −2', apply() { confAll(-2); } }
     ]
   },
   /* ---------- Événements de la phase prop firm (prop: true) ---------- */
@@ -2445,6 +2581,93 @@ const Satellites = {
   }
 };
 
+/* --- Analyse de marché : statistiques, corrélations, risque, frontière --- */
+const Analysis = {
+  _front: null, _frontKey: '',
+  optimizerAvailable() { return !!S && (Team.hasRole('quant') || S.strategy === 'quant'); },
+  /* Données débloquées par l'équipe et les améliorations */
+  level() { return { data: Progression.upg('data') > 0 || S.strategy === 'macro', risk: Progression.upg('riskengine') > 0, quant: this.optimizerAvailable() }; },
+  keys() { return RISKY.filter(k => Market.isUnlocked(k)); },
+  rets(k, n) { const h = S.market.hist[k] || []; const out = []; for (let i = Math.max(1, h.length - n); i < h.length; i++) out.push(h[i] / h[i - 1] - 1); return out; },
+  mean(a) { return a.reduce((x, y) => x + y, 0) / (a.length || 1); },
+  sd(a) { const m = this.mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / Math.max(1, a.length - 1)); },
+  corr(a, b) {
+    const n = Math.min(a.length, b.length); if (n < 4) return 0;
+    a = a.slice(-n); b = b.slice(-n);
+    const ma = this.mean(a), mb = this.mean(b);
+    let c = 0, va = 0, vb = 0;
+    for (let i = 0; i < n; i++) { c += (a[i] - ma) * (b[i] - mb); va += (a[i] - ma) ** 2; vb += (b[i] - mb) ** 2; }
+    return va > 0 && vb > 0 ? c / Math.sqrt(va * vb) : 0;
+  },
+  /* Statistiques d'un actif sur l'historique visible */
+  stats(k) {
+    const h = S.market.hist[k] || [];
+    const ch = n => h.length > n ? h[h.length - 1] / h[h.length - 1 - n] - 1 : null;
+    const r26 = this.rets(k, 26), r52 = this.rets(k, 52), re = this.rets('equities', 52);
+    let peak = 0, mdd = 0;
+    for (const v of h.slice(-53)) { peak = Math.max(peak, v); mdd = Math.max(mdd, 1 - v / peak); }
+    const s52 = this.sd(r52);
+    const n = Math.min(r52.length, re.length);
+    const a = r52.slice(-n), b = re.slice(-n), ma = this.mean(a), mb = this.mean(b);
+    let cov = 0, vb = 0;
+    for (let i = 0; i < n; i++) { cov += (a[i] - ma) * (b[i] - mb); vb += (b[i] - mb) ** 2; }
+    return { c4: ch(4), c13: ch(13), c52: ch(52), vol: this.sd(r26) * Math.sqrt(52), mdd,
+      sharpe: s52 > 0 ? (this.mean(r52) * 52 - 0.02) / (s52 * Math.sqrt(52)) : 0, beta: vb > 0 ? cov / vb : 0 };
+  },
+  /* Rendement annualisé moyen observé dans chaque régime depuis le début de la partie */
+  regimePerf(k, reg) { const c = S.market.regStats[k] && S.market.regStats[k][reg]; return c && c.n >= 2 ? { v: (Math.exp(c.s / c.n) - 1) * 52, n: c.n } : null; },   // rendement hebdo moyen × 52
+  /* Covariance théorique (régime courant) sur une liste d'actifs */
+  cov(keys) {
+    const C = Market.corrMatrix(S.market.regime), red = Math.min(0.45, Team.effects().volRed + Strat.b('volRed'));
+    const idx = keys.map(k => RISKY.indexOf(k)), v = keys.map(k => Market.effVol(k) * (1 - red));
+    return keys.map((_, i) => keys.map((_, j) => C[idx[i]][idx[j]] * v[i] * v[j]));
+  },
+  /* Contribution de chaque ligne au risque du portefeuille (somme = 100 %) */
+  riskContrib() {
+    const w = Portfolio.weights(), keys = RISKY.filter(k => Math.abs(w[k]) > 1e-4);
+    if (!keys.length) return [];
+    const V = this.cov(keys), x = keys.map(k => w[k]);
+    const m = V.map(row => row.reduce((t, c, j) => t + c * x[j], 0));
+    const tot = x.reduce((t, xi, i) => t + xi * m[i], 0);
+    if (tot <= 0) return [];
+    return keys.map((k, i) => ({ k, w: w[k], c: x[i] * m[i] / tot })).sort((a, b) => b.c - a.c);
+  },
+  /* Nombre effectif de paris indépendants -> score de diversification 0-100 */
+  diversification() {
+    if (!S) return { neff: 0, score: 0 };
+    const rc = this.riskContrib().filter(r => r.c > 0);
+    if (!rc.length) return { neff: 0, score: 0 };
+    const neff = 1 / rc.reduce((t, r) => t + r.c * r.c, 0);
+    return { neff, score: clamp((neff - 1) / 5 * 100, 0, 100) };
+  },
+  /* Portefeuilles aléatoires (long-only, 40 % max par ligne) : rendement prévu vs volatilité */
+  frontier() {
+    const key = S.week + '|' + S.tier + '|' + S.market.regime + '|' + S.market.perceived;
+    if (this._front && this._frontKey === key) return this._front;
+    const keys = this.keys(), V = this.cov(keys), mu = keys.map(k => S.market.forecasts[k] || 0);
+    const pts = [];
+    const evalW = x => { let r = 0, v = 0; for (let i = 0; i < x.length; i++) { r += x[i] * mu[i]; for (let j = 0; j < x.length; j++) v += x[i] * x[j] * V[i][j]; } return { r, vol: Math.sqrt(Math.max(v, 0)), x }; };
+    for (let t = 0; t < 400; t++) {   // Math.random : n'influence pas l'aléatoire du jeu
+      const sub = keys.map(() => Math.random() < 0.45 ? -Math.log(Math.random() + 1e-9) : 0);
+      let sum = sub.reduce((a, b) => a + b, 0); if (sum <= 0) continue;
+      let x = sub.map(v => v / sum);
+      for (let it = 0; it < 5; it++) { const ex = x.reduce((a, v) => a + Math.max(0, v - 0.4), 0); if (ex < 1e-6) break; const free = x.filter(v => v < 0.4).reduce((a, v) => a + v, 0) || 1; x = x.map(v => v >= 0.4 ? 0.4 : v + ex * v / free); }
+      pts.push(evalW(x));
+    }
+    this._frontKey = key;
+    return (this._front = { keys, pts, evalW });
+  },
+  /* Portefeuille au meilleur ratio rendement prévu / risque (investi à 90 %) */
+  optimal() {
+    const F = this.frontier();
+    let best = null, bs = -Infinity;
+    for (const p of F.pts) { const sh = (p.r - 0.02) / Math.max(0.01, p.vol); if (sh > bs) { bs = sh; best = p; } }
+    const t = {};
+    if (best) F.keys.forEach((k, i) => { const w = Math.round(best.x[i] * 90); if (w > 0) t[k] = w; });
+    return { t, p: best };
+  }
+};
+
 /* --- Jalons narratifs du milieu de partie --- */
 const MILESTONES = [{ id: 'm_press', at: 5e5 }, { id: 'm_dd', at: 2.5e6 }, { id: 'm_equity', at: 1e7 }, { id: 'm_conf', at: 5e7 }, { id: 'm_rank', at: 2.5e8 }];
 const Milestones = {
@@ -2797,12 +3020,14 @@ const TABS = [
   { id: 'team', label: '👥 Équipe' },
   { id: 'investors', label: '🤝 Investisseurs' },
   { id: 'upgrades', label: '⬆️ Améliorations' },
+  { id: 'analysis', label: '🔬 Analyse' },
   { id: 'journal', label: '📜 Journal' }
 ];
 
 const UI = {
   enabled: true,
   batch: false,
+  corrMode: 'obs',
   tab: 'market',
   chart: null,
   chartLoaded: false,
@@ -2872,6 +3097,7 @@ const UI = {
       case 'sat-launch': Satellites.launch(k); break;
       case 'sat-close': this.confirm('Fermer ce fonds ?', 'Les clients récupèrent leur argent (réputation −2).', () => Satellites.close(id)); break;
       case 'report': this.showReport(); break;
+      case 'corr-mode': this.corrMode = this.corrMode === 'theo' ? 'obs' : 'theo'; this.renderTab(); break;
       case 'prop-quit': this.confirm('Quitter la prop firm ?', 'Vous ne toucherez plus de versements.', () => Prop.quit()); break;
       case 'founder-in': Investors.founderInvest(S.cash * Number(el.dataset.f)); break;
       case 'founder-out': {
@@ -2987,7 +3213,7 @@ const UI = {
   },
   renderTab() {
     if (!this.enabled || !S) return;
-    const fn = { market: 'tabMarket', portfolio: 'tabPortfolio', team: 'tabTeam', investors: 'tabInvestors', upgrades: 'tabUpgrades', journal: 'tabJournal' }[this.tab];
+    const fn = { market: 'tabMarket', portfolio: 'tabPortfolio', team: 'tabTeam', investors: 'tabInvestors', upgrades: 'tabUpgrades', analysis: 'tabAnalysis', journal: 'tabJournal' }[this.tab];
     const el = this.$('tabContent');
     const scroll = el.querySelector('.journal')?.scrollTop;
     el.innerHTML = this[fn]();
@@ -3007,7 +3233,7 @@ const UI = {
   tabMarket() {
     const m = S.market, q = Team.infoQuality();
     const R = CONFIG.REGIMES[m.perceived];
-    const cards = Object.keys(CONFIG.ASSETS).map(k => {
+    const card = k => {
       const a = CONFIG.ASSETS[k];
       const unlocked = Market.isUnlocked(k);
       if (k === 'cash') {
@@ -3024,8 +3250,14 @@ const UI = {
         ${unlocked ? `<div class="kv small"><span class="muted">Recommandation</span><span class="pill ${Portfolio.rating(k).c}">${Portfolio.rating(k).t}</span></div>` : ''}
         <div class="kv small"><span class="muted">Volatilité (régime)</span><span class="num">${fmtPct(Market.effVol(k), 0)}</span></div>
         <div class="kv small"><span class="muted">Liquidité</span><span>${a.liq} · frais ${fmtPct(Portfolio.feeRate(k), 2)}</span></div>
+        ${a.profile ? `<div class="small muted">${a.profile}</div>` : ''}
       </div>`;
-    }).join('');
+    };
+    const locked = RISKY.filter(k => !Market.isUnlocked(k));
+    const cards = Object.entries(CONFIG.ASSET_GROUPS).map(([g, label]) => {
+      const ks = RISKY.filter(k => CONFIG.ASSETS[k].group === g && Market.isUnlocked(k)).concat(g === 'obligations' ? ['cash'] : []);
+      return ks.length ? `<h3 class="mt">${label}</h3><div class="grid g4">${ks.map(card).join('')}</div>` : '';
+    }).join('') + (locked.length ? `<div class="small muted mt">🔒 À débloquer : ${locked.map(k => `${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name} (palier ${CONFIG.ASSETS[k].tier})`).join(' · ')}</div>` : '');
     const mods = m.mods.length ? m.mods.map(md => `<span class="pill ${md.mu > 0 ? 'g' : 'r'}">${md.k === 'all' ? 'Tous' : CONFIG.ASSETS[md.k].name} ${fmtPct(md.mu, 0, true)}/an · ${md.weeks} sem.</span>`).join(' ') : '<span class="muted small">Aucun</span>';
     return `
       <div class="grid g3">
@@ -3039,7 +3271,7 @@ const UI = {
           <div class="small muted mt">Régimes possibles : 🐂 haussier, ↔️ latéral, 🐻 baissier, 🔥 crise (corrélations ↑, volatilité ↑), 🫧 bulle (les actifs risqués surperforment… puis chutent).</div></div>
       </div>
       ${this.adviceAndOpps()}
-      <div class="grid g4 mt">${cards}</div>`;
+      ${cards}`;
   },
   adviceAndOpps() {
     const adv = S.advice.map(a => `<div class="kv small"><span>${esc(a.text)}</span>${a.act ? `<button class="btn small" data-act="advice" data-id="${a.id}">Appliquer</button>` : ''}</div>`).join('')
@@ -3080,7 +3312,7 @@ const UI = {
     const fee = Portfolio.estimateRebalance();
     const shorts = RISKY.filter(k => f.positions[k] < 0);
 
-    const rows = RISKY.filter(k => Market.isUnlocked(k)).map(k => {
+    const row = k => {
       const a = CONFIG.ASSETS[k];
       const min = Portfolio.minWeight(k), max = f.leverage * 100;
       const sl = casual ? '<span class="small muted">—</span>' : `<select data-sl="${k}" title="Stop-loss">${[0, 0.05, 0.1, 0.15, 0.2, 0.3].map(v => `<option value="${v}" ${f.stopLoss[k] === v ? 'selected' : ''}>${v ? 'SL ' + fmtPct(v, 0) : 'Pas de SL'}</option>`).join('')}</select>`;
@@ -3093,6 +3325,12 @@ const UI = {
         <span class="num small"><span class="muted">Actuel </span>${fmtPct(w[k], 0)}</span>
         ${sl}</div>
       </div>`;
+    };
+    const rows = Object.entries(CONFIG.ASSET_GROUPS).map(([g, label]) => {
+      const ks = RISKY.filter(k => CONFIG.ASSETS[k].group === g && Market.isUnlocked(k));
+      if (!ks.length) return '';
+      const tot = ks.reduce((t, k) => t + f.target[k], 0);
+      return `<div class="grp-head"><b>${label}</b><span class="muted small">cible ${tot} %</span></div>${ks.map(row).join('')}`;
     }).join('');
 
     return `${this.propCard()}
@@ -3313,6 +3551,88 @@ const UI = {
       <h3 class="mt">Feuille de route des locaux</h3>
       <div class="small muted">Le fonds déménage automatiquement dès que l'AUM atteint le seuil du palier suivant. Pas de retour en arrière (sauf en hard mode).</div>
       <div class="tablewrap mt"><table class="t"><thead><tr><th>#</th><th>Palier</th><th>Seuil AUM</th><th>Local</th><th>Capacité</th><th>Bonus</th><th>Déblocages</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  /* ---------- Onglet Analyse ---------- */
+  tabAnalysis() {
+    const lv = Analysis.level(), keys = Analysis.keys(), A = CONFIG.ASSETS;
+    const pc = v => v === null || v === undefined ? '<span class="muted">—</span>' : `<span class="${cls(v)}">${fmtPct(v, 1, true)}</span>`;
+    const sensBar = v => { const w = Math.abs(v) * 50; return `<span class="sens"><i style="left:${v >= 0 ? 50 : 50 - w}%;width:${w}%;background:${v >= 0 ? 'var(--green)' : 'var(--red)'}"></i></span>`; };
+    const lock = (title, how) => `<div class="lockbox">🔒 <b>${title}</b><br><span class="small">${how}</span></div>`;
+
+    // 1. Statistiques par actif
+    const statRows = keys.map(k => {
+      const st = Analysis.stats(k), L = Object.assign({ M: 0, R: 0, O: 0, S: 0 }, A[k].L);
+      return `<tr><td>${A[k].icon} ${A[k].short}</td><td class="num">${pc(st.c4)}</td><td class="num">${pc(st.c13)}</td><td class="num">${pc(st.c52)}</td>
+        <td class="num">${fmtPct(st.vol, 0)}</td><td class="num red">${fmtPct(-st.mdd, 0)}</td>
+        <td class="num">${lv.data ? fmtNum(st.sharpe, 2) : '🔒'}</td><td class="num">${lv.data ? fmtNum(st.beta, 2) : '🔒'}</td>
+        <td>${sensBar(L.M)} ${sensBar(L.R)} ${sensBar(L.O)} ${sensBar(L.S)}</td></tr>`;
+    }).join('');
+    // 2. Performance par régime
+    const regs = Object.keys(CONFIG.REGIMES);
+    const regRows = keys.map(k => `<tr><td>${A[k].icon} ${A[k].short}</td>${regs.map(r => { const p = Analysis.regimePerf(k, r); return `<td class="num">${p ? pc(p.v) : '<span class="muted">—</span>'}</td>`; }).join('')}</tr>`).join('');
+    const regN = regs.map(r => { const c = S.market.regStats.equities && S.market.regStats.equities[r]; return `<th class="num">${CONFIG.REGIMES[r].icon} ${CONFIG.REGIMES[r].name}<br><span class="muted small">${c ? c.n : 0} sem.</span></th>`; }).join('');
+
+    // 3. Carte des corrélations
+    let heat;
+    if (!lv.data) heat = lock('Carte des corrélations', "Débloquée par l'abonnement data premium (ou la stratégie Global macro).");
+    else {
+      const theo = this.corrMode === 'theo';
+      const C = theo ? Market.corrMatrix(S.market.regime) : null;
+      const r = {}; if (!theo) keys.forEach(k => { r[k] = Analysis.rets(k, 26); });
+      const cell = (a, b) => { const v = a === b ? 1 : theo ? C[RISKY.indexOf(a)][RISKY.indexOf(b)] : Analysis.corr(r[a], r[b]);
+        const bg = v >= 0 ? `rgba(248,113,113,${Math.abs(v) * 0.85})` : `rgba(96,165,250,${Math.abs(v) * 0.85})`;
+        return `<td style="background:${bg}" title="${A[a].name} / ${A[b].name} : ${fmtNum(v, 2)}">${a === b ? '' : fmtNum(v, 1)}</td>`; };
+      heat = `<div class="row between"><span class="small muted">${theo ? 'Corrélations théoriques dans le régime actuel (' + CONFIG.REGIMES[S.market.regime].name + ')' : 'Corrélations observées sur les 26 dernières semaines'} · rouge = bougent ensemble, bleu = en sens inverse</span>
+        <button class="btn small" data-act="corr-mode">${theo ? 'Voir les observées' : 'Voir les théoriques'}</button></div>
+        <div class="tablewrap mt"><table class="heat"><tr><th></th>${keys.map(k => `<th class="v">${A[k].short}</th>`).join('')}</tr>
+        ${keys.map(a => `<tr><th class="h">${A[a].icon} ${A[a].short}</th>${keys.map(b => cell(a, b)).join('')}</tr>`).join('')}</table></div>
+        <div class="small muted mt">En crise, toutes les corrélations entre actifs risqués montent (la diversification disparaît), tandis que les obligations d'État deviennent un refuge.</div>`;
+    }
+
+    // 4. Contribution au risque + diversification
+    let risk;
+    if (!lv.risk) risk = lock('Contribution au risque & diversification', 'Débloquées par le Moteur de risque (Améliorations, palier 4).');
+    else {
+      const rc = Analysis.riskContrib(), dv = Analysis.diversification();
+      risk = `<div class="kv"><span class="muted">Score de diversification</span><b>${Math.round(dv.score)}/100</b></div>
+        <div class="kv"><span class="muted">Nombre de paris indépendants</span><span class="num">${fmtNum(dv.neff, 1)}</span></div>
+        <div class="small muted">Un bon score attire davantage les clients institutionnels (jusqu'à +50 %).</div>
+        <div class="tablewrap mt"><table class="t"><thead><tr><th>Ligne</th><th>Poids</th><th>Part du risque</th><th></th></tr></thead><tbody>
+        ${rc.map(x => `<tr><td>${A[x.k].icon} ${A[x.k].short}</td><td class="num">${fmtPct(x.w, 0)}</td><td class="num ${x.c > x.w * 1.8 && x.c > 0.15 ? 'red' : ''}">${fmtPct(x.c, 0)}</td><td style="min-width:90px"><div class="gauge"><div style="width:${clamp(x.c, 0, 1) * 100}%;background:${A[x.k].color}"></div></div></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Portefeuille vide.</td></tr>'}
+        </tbody></table></div>`;
+    }
+
+    // 5. Frontière efficiente
+    let front;
+    if (!lv.quant) front = lock('Frontière efficiente & allocation optimisée', 'Débloquées par un Quant dans l’équipe (palier 8) ou la stratégie Quantitatif.');
+    else {
+      const F = Analysis.frontier(), opt = Analysis.optimal();
+      const W = 520, H = 240, pad = 34;
+      const evalT = t => F.evalW(F.keys.map(k => (t[k] || 0) / 100));
+      const presets = Portfolio.presets();
+      const marks = [['Vous', evalT(Object.fromEntries(RISKY.map(k => [k, Portfolio.weights()[k] * 100]))), '#fff'], ['Prudent', evalT(presets.prudent.t), '#60a5fa'], ['Équilibré', evalT(presets.equilibre.t), '#34d399'], ['Dynamique', evalT(presets.dynamique.t), '#f59e0b']];
+      if (opt.p) marks.push(['Optimisé', opt.p, '#e879f9']);
+      const all = F.pts.concat(marks.map(m => m[1]));
+      const vmax = Math.max(...all.map(p => p.vol)) * 1.05 || 0.1, rmin = Math.min(0, ...all.map(p => p.r)), rmax = Math.max(...all.map(p => p.r)) * 1.05 || 0.1;
+      const X = v => pad + v / vmax * (W - pad - 10), Y = r => H - pad - (r - rmin) / (rmax - rmin || 1) * (H - pad - 10);
+      front = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto;background:rgba(0,0,0,.15);border-radius:8px">
+        <line x1="${pad}" y1="${H - pad}" x2="${W}" y2="${H - pad}" stroke="#8b95a8" stroke-width=".5"/><line x1="${pad}" y1="0" x2="${pad}" y2="${H - pad}" stroke="#8b95a8" stroke-width=".5"/>
+        <text x="${W / 2}" y="${H - 8}" fill="#8b95a8" font-size="10" text-anchor="middle">Volatilité (risque) →</text>
+        <text x="10" y="${H / 2}" fill="#8b95a8" font-size="10" transform="rotate(-90 10 ${H / 2})" text-anchor="middle">Rendement prévu →</text>
+        ${F.pts.map(p => `<circle cx="${X(p.vol).toFixed(1)}" cy="${Y(p.r).toFixed(1)}" r="1.6" fill="#8b95a8" opacity=".45"/>`).join('')}
+        ${marks.map(([n, p, c]) => `<circle cx="${X(p.vol).toFixed(1)}" cy="${Y(p.r).toFixed(1)}" r="5" fill="${c}" stroke="#000"/><text x="${(X(p.vol) + 7).toFixed(1)}" y="${(Y(p.r) + 3).toFixed(1)}" fill="${c}" font-size="10">${n}</text>`).join('')}
+      </svg>
+      <div class="small muted">Chaque point gris est un portefeuille possible (prévisions actuelles de l'équipe). Les meilleurs sont en haut à gauche : plus de rendement pour moins de risque. Le préréglage « ⚙️ Optimisé » (onglet Portefeuille) reprend le meilleur rapport rendement/risque.</div>`;
+    }
+
+    return `<div class="card"><h4>Comment lire cet onglet ?</h4><div class="small muted">Chaque actif réagit à quatre <b>facteurs communs</b> : Marché, Taux, Pétrole/matières et Spéculation. Les barres de sensibilité montrent ces réactions (vert = monte avec le facteur, rouge = baisse quand il monte). Deux actifs sensibles aux mêmes facteurs sont corrélés. Les données avancées se débloquent avec la data premium, le moteur de risque et les quants.</div></div>
+      <h3 class="mt">📊 Statistiques par actif</h3>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th><th>4 sem.</th><th>13 sem.</th><th>52 sem.</th><th>Vol. (26 s.)</th><th>Pire baisse</th><th>Sharpe</th><th>Bêta</th><th>Sensib. M · R · O · S</th></tr></thead><tbody>${statRows}</tbody></table></div>
+      <h3 class="mt">🧭 Performance moyenne par régime (rendement hebdomadaire moyen × 52, observé pendant votre partie)</h3>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th>${regN}</tr></thead><tbody>${regRows}</tbody></table></div>
+      <div class="grid g2 mt"><div class="card"><h4>🌡️ Carte des corrélations</h4>${heat}</div><div class="card"><h4>🧩 Contribution au risque</h4>${risk}</div></div>
+      <div class="card mt"><h4>🎯 Frontière efficiente</h4>${front}</div>`;
   },
 
   /* ---------- Onglet Journal ---------- */
@@ -3596,7 +3916,7 @@ function boot() {
 document.addEventListener('DOMContentLoaded', boot);
 
 /* Accès console / tests automatisés */
-window.HFT = { get S() { return S; }, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
+window.HFT = { get S() { return S; }, Analysis, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" async onload="UI.onChartLoaded()" onerror="UI.onChartFailed()"></script>
 </body>
