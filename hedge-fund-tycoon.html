@@ -844,6 +844,21 @@ const Market = {
     });
   },
 
+  /* Volatilité annualisée attendue sur les 13 prochaines semaines : moyenne des
+     variances de chaque régime, pondérée par la probabilité d'y être (chaîne de
+     Markov partant du régime perçu). */
+  expectedVol(k, horizon = 13) {
+    const T = CONFIG.REGIME_TRANSITIONS, regs = Object.keys(T);
+    let p = Object.fromEntries(regs.map(r => [r, r === S.market.perceived ? 1 : 0]));
+    let v = 0;
+    for (let t = 0; t < horizon; t++) {
+      const np = Object.fromEntries(regs.map(r => [r, 0]));
+      for (const a of regs) for (const b of regs) np[b] += p[a] * (T[a][b] || 0);
+      p = np;
+      for (const r of regs) v += p[r] * this.effVol(k, r) ** 2;
+    }
+    return Math.sqrt(v / horizon);
+  },
   addModifier(k, mu, weeks) { S.market.mods.push({ k, mu, weeks }); },
   forceRegime(regime, weeks, after) { S.market.forced = { regime, weeks, after }; S.market.regime = regime; S.market.regimeWeeks = 0; },
 
@@ -2603,7 +2618,7 @@ const Analysis = {
   stats(k) {
     const h = S.market.hist[k] || [];
     const ch = n => h.length > n ? h[h.length - 1] / h[h.length - 1 - n] - 1 : null;
-    const r26 = this.rets(k, 26), r52 = this.rets(k, 52), re = this.rets('equities', 52);
+    const r52 = this.rets(k, 52), re = this.rets('equities', 52);
     let peak = 0, mdd = 0;
     for (const v of h.slice(-53)) { peak = Math.max(peak, v); mdd = Math.max(mdd, 1 - v / peak); }
     const s52 = this.sd(r52);
@@ -2611,7 +2626,7 @@ const Analysis = {
     const a = r52.slice(-n), b = re.slice(-n), ma = this.mean(a), mb = this.mean(b);
     let cov = 0, vb = 0;
     for (let i = 0; i < n; i++) { cov += (a[i] - ma) * (b[i] - mb); vb += (b[i] - mb) ** 2; }
-    return { c4: ch(4), c13: ch(13), c52: ch(52), vol: this.sd(r26) * Math.sqrt(52), mdd,
+    return { c4: ch(4), c13: ch(13), c52: ch(52), vol: s52 * Math.sqrt(52), mdd,
       sharpe: s52 > 0 ? (this.mean(r52) * 52 - 0.02) / (s52 * Math.sqrt(52)) : 0, beta: vb > 0 ? cov / vb : 0 };
   },
   /* Rendement annualisé moyen observé dans chaque régime depuis le début de la partie */
@@ -3248,7 +3263,7 @@ const UI = {
         ${this.sparkline(m.hist[k])}
         <div class="kv small"><span class="muted">Rendement prévu</span><span class="num ${cls(fc)}">${fmtPct(fc, 1, true)}/an <span class="muted">±${fmtPct(Portfolio.forecastError(k), 0)}</span></span></div>
         ${unlocked ? `<div class="kv small"><span class="muted">Recommandation</span><span class="pill ${Portfolio.rating(k).c}">${Portfolio.rating(k).t}</span></div>` : ''}
-        <div class="kv small"><span class="muted">Volatilité (régime)</span><span class="num">${fmtPct(Market.effVol(k), 0)}</span></div>
+        <div class="kv small"><span class="muted" title="Volatilité annualisée attendue sur les 13 prochaines semaines, selon le régime perçu et les probabilités de changement de régime">Volatilité prévue (an)</span><span class="num">${fmtPct(Market.expectedVol(k), 0)}</span></div>
         <div class="kv small"><span class="muted">Liquidité</span><span>${a.liq} · frais ${fmtPct(Portfolio.feeRate(k), 2)}</span></div>
         ${a.profile ? `<div class="small muted">${a.profile}</div>` : ''}
       </div>`;
@@ -3628,7 +3643,7 @@ const UI = {
 
     return `<div class="card"><h4>Comment lire cet onglet ?</h4><div class="small muted">Chaque actif réagit à quatre <b>facteurs communs</b> : Marché, Taux, Pétrole/matières et Spéculation. Les barres de sensibilité montrent ces réactions (vert = monte avec le facteur, rouge = baisse quand il monte). Deux actifs sensibles aux mêmes facteurs sont corrélés. Les données avancées se débloquent avec la data premium, le moteur de risque et les quants.</div></div>
       <h3 class="mt">📊 Statistiques par actif</h3>
-      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th><th>4 sem.</th><th>13 sem.</th><th>52 sem.</th><th>Vol. (26 s.)</th><th>Pire baisse</th><th>Sharpe</th><th>Bêta</th><th>Sensib. M · R · O · S</th></tr></thead><tbody>${statRows}</tbody></table></div>
+      <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th><th>4 sem.</th><th>13 sem.</th><th>52 sem.</th><th>Vol. 1 an</th><th>Pire baisse</th><th>Sharpe</th><th>Bêta</th><th>Sensib. M · R · O · S</th></tr></thead><tbody>${statRows}</tbody></table></div>
       <h3 class="mt">🧭 Performance moyenne par régime (rendement hebdomadaire moyen × 52, observé pendant votre partie)</h3>
       <div class="tablewrap"><table class="t"><thead><tr><th>Actif</th>${regN}</tr></thead><tbody>${regRows}</tbody></table></div>
       <div class="grid g2 mt"><div class="card"><h4>🌡️ Carte des corrélations</h4>${heat}</div><div class="card"><h4>🧩 Contribution au risque</h4>${risk}</div></div>
