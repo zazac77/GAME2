@@ -198,6 +198,12 @@
   table.t tr.cur td { background: rgba(255,255,255,.05); color: var(--accent); font-weight: 700; }
   .tablewrap { overflow-x: auto; }
 
+  /* Tutoriel */
+  #tutPanel { position: fixed; left: 12px; bottom: 12px; z-index: 46; width: min(380px, calc(100vw - 24px)); background: #1b2436; border: 2px solid var(--accent); border-radius: 12px; padding: 12px 14px; box-shadow: 0 10px 40px rgba(0,0,0,.6); font-size: 13px; }
+  #tutPanel h4 { color: var(--accent); margin-bottom: 4px; }
+  #tutPanel p { margin: 6px 0; line-height: 1.45; }
+  .tut-hl { outline: 3px solid var(--accent) !important; outline-offset: 2px; animation: tutpulse 1.2s ease-in-out infinite; position: relative; z-index: 2; }
+  @keyframes tutpulse { 0%, 100% { outline-color: var(--accent); } 50% { outline-color: transparent; } }
   /* Toasts */
   #toasts { position: fixed; right: 12px; bottom: 12px; z-index: 50; display: flex; flex-direction: column; gap: 6px; max-width: min(360px, calc(100vw - 24px)); }
   .toast { background: var(--panel2); border: 1px solid var(--border); border-left: 4px solid var(--blue); border-radius: 8px; padding: 9px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.4); animation: tin .25s ease; }
@@ -285,6 +291,7 @@
 </div>
 
 <div id="toasts"></div>
+<div id="tutPanel" hidden></div>
 <div id="modalRoot"></div>
 <div id="fade"><div class="big" id="fadeIcon"></div><div class="ttl" id="fadeTitle"></div><div class="muted" id="fadeSub"></div></div>
 
@@ -2706,6 +2713,46 @@ const Analysis = {
   }
 };
 
+/* --- Tutoriel guidé (phase prop firm, désactivable) ---
+   Chaque étape : texte, élément à mettre en surbrillance (target), et soit une
+   condition de passage automatique (done), soit un bouton « Suivant » (next). */
+const TUTORIAL = [
+  { title: 'Bienvenue !', next: true, text: () => `Vous débutez comme <b>trader de prop firm</b> : une société vous confie de l'argent à gérer. Si vous prouvez votre talent, vous pourrez lancer <b>votre propre hedge fund</b>, puis le faire grandir jusqu'à 1 Md$ et une réputation de 90/100.` },
+  { title: 'Le challenge', target: '[data-tab="portfolio"]', done: () => UI.tab === 'portfolio', text: () => `Ouvrez l'onglet <b>💼 Portefeuille</b> (en surbrillance).` },
+  { title: 'Acheter le challenge', target: '[data-act="prop-buy"]', done: s => s.prop.phase !== 'idle', text: () => { const r = Prop.rules(); return `Payez le challenge (${fmtMoney(r.fee)}). Objectif : gagner <b>${fmtPct(r.target, 0, true)}</b> sans jamais perdre <b>${fmtPct(r.maxDD, 0)}</b> depuis votre plus haut${r.deadline ? `, en ${r.deadline} semaines maximum` : ''}. La perte maximale est éliminatoire !`; } },
+  { title: 'Votre allocation', target: '[data-act="preset"]', done: s => s.tutorial.preset, text: () => `Le compte suit votre <b>allocation cible</b>. Choisissez un préréglage : <b>⚖️ Équilibré</b> est un bon début. Plus tard, vous ajusterez ligne par ligne avec les curseurs.${Portfolio.isCasual() ? '' : ' En intermédiaire, cliquez ensuite sur « Appliquer l’allocation ».'}` },
+  { title: 'Lire le marché', target: '[data-tab="market"]', done: () => UI.tab === 'market', text: () => `Ouvrez l'onglet <b>📊 Marché</b> pour voir dans quel régime se trouve le marché.` },
+  { title: 'Régimes et prévisions', next: true, text: () => `Le <b>régime</b> (haussier, latéral, baissier, crise, bulle) change toutes les quelques semaines : il est repéré avec un peu de retard. Chaque carte d'actif donne un <b>rendement prévu</b> et une recommandation 🟢 / 🔴. En crise, passez en <b>Prudent</b> ; en hausse, osez le <b>Dynamique</b>.` },
+  { title: 'Faire passer le temps', target: '#btnNext', enter: s => { s.tutorial.mark = s.week; }, done: s => s.week >= s.tutorial.mark + 3, text: () => `Un tour = une semaine. Cliquez 3 fois sur <b>▶ Semaine suivante</b> (ou barre d'espace) et regardez votre compte évoluer dans le bandeau du haut.` },
+  { title: 'Avancer plus vite', target: '#btnSkip', next: true, text: () => `<b>⏭️ Jusqu'au prochain fait</b> avance automatiquement jusqu'au prochain événement, changement de régime ou étape importante. Pratique pour les périodes calmes.` },
+  { title: 'Réussir le challenge', done: s => s.prop.phase === 'funded' || s.prop.launched, text: s => { const r = Prop.rules(); return S.prop.phase === 'challenge' ? `Progression : <b>${fmtPct(Prop.gain(), 1, true)}</b> / ${fmtPct(r.target, 0, true)} · perte depuis le plus haut <b>${fmtPct(Prop.dd(), 1)}</b> / ${fmtPct(r.maxDD, 0)}. Si la perte approche la limite, réduisez le risque (Prudent).` : `Challenge échoué : ce n'est pas grave. Rachetez-en un dans l'onglet Portefeuille (gratuit après ${CONFIG.PROP.cooldown} semaines si vous n'avez plus de cash).`; } },
+  { title: 'Compte financé 🎉', next: true, text: () => `Bravo ! La prop firm vous confie <b>${fmtMoney(S.prop.size)}</b> et vous reverse <b>80 % des gains</b> toutes les 4 semaines : c'est votre première source de cash. Gardez une performance positive pendant ${Prop.rules().gradWeeks} semaines pour lancer votre fonds.` },
+  { title: 'Vers votre propre fonds', done: s => s.prop.launched && !!s.strategy, text: () => `Continuez à bien gérer le compte financé (${S.prop.fundedWeeks}/${Prop.rules().gradWeeks} semaines, performance ${fmtPct(Prop.trackAnnual(), 1, true)}/an). Un bon historique de performance donnera plus de réputation et de premiers clients à votre fonds.` },
+  { title: 'Votre fonds est lancé 🚀', next: true, text: () => `Vous gérez maintenant l'argent de clients. Chaque trimestre, un <b>objectif</b> et un <b>rapport</b> vous attendent ; votre <b>indice de référence</b> (bandeau du haut) est à battre. Explorez <b>👥 Équipe</b> pour recruter, <b>🤝 Investisseurs</b> pour vos clients et <b>🔬 Analyse</b> pour les données. Bonne chance !` }
+];
+const Tutorial = {
+  active() { return !!(S && S.tutorial && S.tutorial.on && S.status === 'playing' && S.tutorial.step < TUTORIAL.length); },
+  next() { if (!this.active()) return; S.tutorial.step++; const st = TUTORIAL[S.tutorial.step]; if (st && st.enter) st.enter(S); this.render(); },
+  stop() { if (S && S.tutorial) S.tutorial.on = false; this.render(); UI.toast('Tutoriel désactivé (réactivable dans les Paramètres).', 'info'); },
+  /* Vérifie la condition de passage puis affiche le panneau */
+  render() {
+    if (!UI.enabled) return;
+    const panel = document.getElementById('tutPanel');
+    document.querySelectorAll('.tut-hl').forEach(e => e.classList.remove('tut-hl'));
+    if (!this.active()) { panel.hidden = true; return; }
+    let guard = 0;
+    while (this.active() && TUTORIAL[S.tutorial.step].done && TUTORIAL[S.tutorial.step].done(S) && guard++ < 20) { S.tutorial.step++; const st = TUTORIAL[S.tutorial.step]; if (st && st.enter) st.enter(S); }
+    // Après le challenge réussi, on saute les étapes de challenge si besoin
+    if (!this.active()) { panel.hidden = true; return; }
+    const st = TUTORIAL[S.tutorial.step];
+    const extra = S.events.pending ? `<p class="small amber">💡 Un événement attend votre décision : sous chaque choix sont indiqués ses effets (💰 cash, ⭐ réputation, 🛡️ conformité, 🤝 confiance…). Aucun choix n'est gratuit.</p>` : '';
+    panel.hidden = false;
+    panel.innerHTML = `<h4>🎓 Tutoriel · ${S.tutorial.step + 1}/${TUTORIAL.length} — ${st.title}</h4><p>${st.text(S)}</p>${extra}
+      <div class="row between"><button class="btn small" data-tut="stop">Passer le tutoriel</button>${st.next ? `<button class="btn small primary" data-tut="next">${S.tutorial.step === TUTORIAL.length - 1 ? 'Terminer ✓' : 'Suivant ›'}</button>` : '<span class="small muted">Faites l’action en surbrillance…</span>'}</div>`;
+    if (st.target) { const el = document.querySelector(st.target); if (el) el.classList.add('tut-hl'); }
+  }
+};
+
 /* --- Jalons narratifs du milieu de partie --- */
 const MILESTONES = [{ id: 'm_press', at: 5e5 }, { id: 'm_dd', at: 2.5e6 }, { id: 'm_equity', at: 1e7 }, { id: 'm_conf', at: 5e7 }, { id: 'm_rank', at: 2.5e8 }];
 const Milestones = {
@@ -2831,10 +2878,11 @@ const Game = {
     if (S.journal.length > 400) S.journal.length = 400;
   },
 
-  newGame(difficulty, name) {
+  newGame(difficulty, name, tutorial = false) {
     const legacy = Legacy.get();
     RNG.seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     S = createState(difficulty, name, legacy);
+    S.tutorial = { on: !!tutorial, step: 0, mark: 0, preset: false };
     Market.warmup(30);
     Portfolio.applyPreset(difficulty === 'casual' ? 'equilibre' : 'equilibre');
     Team.refreshCandidates(true);
@@ -3096,9 +3144,11 @@ const UI = {
 
   /* ---------- Délégation d'événements ---------- */
   onClick(e) {
+    const tb = e.target.closest('[data-tut]');
+    if (tb) { tb.dataset.tut === 'next' ? Tutorial.next() : Tutorial.stop(); return; }
     const el = e.target.closest('[data-tab],[data-act],[data-modal]');
     if (!el) return;
-    if (el.dataset.tab) { this.tab = el.dataset.tab; this.renderTab(); this.renderTabs(); return; }
+    if (el.dataset.tab) { this.tab = el.dataset.tab; this.renderTab(); this.renderTabs(); Tutorial.render(); return; }
     if (el.dataset.modal) { const h = this.modalHandlers[el.dataset.modal]; if (h) h(el); return; }
     if (!S) return;
     const a = el.dataset.act, id = el.dataset.id ? Number(el.dataset.id) : null, k = el.dataset.k;
@@ -3113,7 +3163,7 @@ const UI = {
       case 'promote': Team.promote(id); break;
       case 'headhunt': Team.headhunt(); break;
       case 'upgrade': Progression.buyUpgrade(el.dataset.u); break;
-      case 'preset': Portfolio.applyPreset(k); if (Portfolio.isCasual()) Portfolio.rebalance(); this.renderAll(); break;
+      case 'preset': if (S.tutorial) S.tutorial.preset = true; Portfolio.applyPreset(k); if (Portfolio.isCasual()) Portfolio.rebalance(); this.renderAll(); break;
       case 'w-minus': case 'w-plus': {
         const step = a === 'w-plus' ? 5 : -5;
         S.fund.target[k] = clamp(S.fund.target[k] + step, Portfolio.minWeight(k), S.fund.leverage * 100);
@@ -3180,6 +3230,7 @@ const UI = {
     this.renderTabs();
     this.renderTab();
     this.updateChart();
+    Tutorial.render();
   },
   renderHeaderStats() {
     if (!this.enabled || !S) return;
@@ -3810,7 +3861,7 @@ const UI = {
     this.$('modalRoot').innerHTML = `<div class="modal-bg"><div class="modal">${html}</div></div>`;
     this.modalOpen = true;
   },
-  closeModal() { if (!this.enabled) return; this.$('modalRoot').innerHTML = ''; this.modalOpen = false; this.modalHandlers = {}; },
+  closeModal() { if (!this.enabled) return; this.$('modalRoot').innerHTML = ''; this.modalOpen = false; this.modalHandlers = {}; if (S) Tutorial.render(); },
   confirm(title, text, onYes) {
     this.showModal(`<h2>${title}</h2><p class="muted">${text}</p><div class="row mt"><button class="btn primary" data-modal="yes">Confirmer</button><button class="btn" data-modal="close">Annuler</button></div>`,
       { yes: () => { this.closeModal(); onYes(); } });
@@ -3877,6 +3928,7 @@ const UI = {
         <label><input type="radio" name="diff" value="casual" checked><b>Casual</b><div class="small muted">Rééquilibrage auto, préréglages, pas de levier ni de short, événements plus rares et plus doux.</div></label>
         <label><input type="radio" name="diff" value="intermediate"><b>Intermédiaire</b><div class="small muted">Levier, short, stop-loss, devises… événements plus durs, conformité stricte, clients exigeants.</div></label>
       </div>
+      <label class="row"><input type="checkbox" id="tutChk" ${l.runs ? '' : 'checked'}> 🎓 Tutoriel guidé pendant la phase prop firm</label>
       <div class="row mt">${hasSave ? '<button class="btn primary" data-modal="cont">▶ Continuer la partie sauvegardée</button>' : ''}<button class="btn ${hasSave ? '' : 'primary'}" data-modal="new">✨ Nouvelle partie</button></div>
       <p class="small muted mt">Astuce : la barre d'espace fait passer une semaine. Un tick = une semaine.</p>`,
       {
@@ -3884,7 +3936,8 @@ const UI = {
         new: () => {
           const d = document.querySelector('input[name=diff]:checked')?.value || 'casual';
           const name = (this.$('fundNameIn')?.value || '').trim() || 'Phoenix Capital';
-          const go = () => { this.closeModal(); Game.newGame(d, name); this.afterLoad(); Save.save(true); };
+          const tut = !!this.$('tutChk')?.checked;
+          const go = () => { this.closeModal(); Game.newGame(d, name, tut); this.afterLoad(); Save.save(true); };
           if (hasSave) this.confirm('Nouvelle partie ?', 'La sauvegarde existante sera écrasée.', go); else go();
         }
       }, false);
@@ -3910,6 +3963,7 @@ const UI = {
       </div>
       <div class="small amber">⚠️ Changer de difficulté en cours de partie modifie la volatilité, les événements et la conformité. Passer en casual ferme levier et positions courtes.</div>
       <h4 class="mt">Options</h4>
+      <label class="row"><input type="checkbox" id="tutSet" ${S.tutorial && S.tutorial.on ? 'checked' : ''}> 🎓 Tutoriel guidé (phase prop firm)</label>
       <label class="row"><input type="checkbox" id="repChk" ${S.showReports ? 'checked' : ''}> Afficher automatiquement le rapport trimestriel</label>
       <label class="row"><input type="checkbox" id="hardChk" ${S.hardMode ? 'checked' : ''}> Hard mode : rétrogradation de palier si l'AUM tombe sous 50 % du seuil</label>
       <div class="row mt"><span>Vitesse de l'avance auto</span><select id="speedSel">${Object.keys(speeds).map(k => `<option value="${k}" ${(this.autoSpeed || 'normal') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
@@ -3921,6 +3975,9 @@ const UI = {
           const d = document.querySelector('input[name=sdiff]:checked')?.value;
           S.hardMode = !!this.$('hardChk')?.checked;
           S.showReports = !!this.$('repChk')?.checked;
+          const tOn = !!this.$('tutSet')?.checked;
+          if (!S.tutorial) S.tutorial = { on: false, step: 0, mark: 0, preset: false };
+          if (tOn && !S.tutorial.on && !S.prop.launched) { S.tutorial.on = true; S.tutorial.step = 0; } else if (!tOn) S.tutorial.on = false;
           this.autoSpeed = this.$('speedSel')?.value || 'normal';
           this.closeModal();
           if (d && d !== S.difficulty) this.confirm('Changer la difficulté ?', `Passer en ${CONFIG.MODES[d].label} en cours de partie. Continuer ?`, () => Game.setDifficulty(d));
@@ -3959,7 +4016,7 @@ function boot() {
 document.addEventListener('DOMContentLoaded', boot);
 
 /* Accès console / tests automatisés */
-window.HFT = { get S() { return S; }, Analysis, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
+window.HFT = { get S() { return S; }, Tutorial, Analysis, Quarter, Opps, Satellites, Achievements, Milestones, Game, Market, Portfolio, Team, Investors, Risk, Events, Progression, Save, UI, CONFIG, RNG, Prop, TIERS, UPGRADES, ROLES, INVESTOR_TYPES, EVENTS };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" async onload="UI.onChartLoaded()" onerror="UI.onChartFailed()"></script>
 </body>
