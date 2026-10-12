@@ -430,7 +430,7 @@ const CONFIG = {
   WEEKS_PER_YEAR: 52,
 
   // --- Démarrage ---------------------------------------------------------
-  START_CASH: 100,              // cash de la société de gestion
+  START_CASH: 10000,            // épargne personnelle du fondateur (cash de la société)
   START_REPUTATION: 10,
   START_COMPLIANCE: 65,
   START_NAVPS: 100,             // NAV par part initiale
@@ -453,15 +453,15 @@ const CONFIG = {
   // toutes les 4 semaines, compte agrandi de 25 % tous les 13 semaines
   // rentables. Le fonds peut être lancé après gradWeeks semaines financées.
   PROP: {
-    casual:       { fee: 50, size: 10000, target: 0.06, maxDD: 0.15, deadline: 0,  funded: 50000, gradWeeks: 20 },
-    intermediate: { fee: 80, size: 10000, target: 0.07, maxDD: 0.10, deadline: 52, funded: 50000, gradWeeks: 26 },
+    casual:       { fee: 300, size: 100000, target: 0.06, maxDD: 0.15, deadline: 0,  funded: 200000, gradWeeks: 20 },
+    intermediate: { fee: 500, size: 100000, target: 0.07, maxDD: 0.10, deadline: 52, funded: 200000, gradWeeks: 26 },
     split: 0.80, payoutEvery: 4, scaleEvery: 13, scaleMult: 1.25, maxSize: 2e6, cooldown: 8
   },
 
   MODES: {
     casual: {
       label: 'Casual', volMult: 0.8, negDriftMult: 0.7, eventInterval: [5, 8], eventSeverity: 0.6,
-      complexityPerTier: 1.5, fineProb: 0.06, licenseWeeks: 10, investorDemand: 0.85
+      complexityPerTier: 1.5, fineProb: 0.06, licenseWeeks: 10, investorDemand: 0.75
     },
     intermediate: {
       label: 'Intermédiaire', volMult: 1.0, negDriftMult: 1.0, eventInterval: [3, 6], eventSeverity: 1.0,
@@ -569,15 +569,18 @@ const CONFIG = {
   REP_UP_SPEED: 0.04, REP_DOWN_SPEED: 0.05,
 
   // --- Victoire / défaite ---------------------------------------------------------
-  WIN_AUM: 1e9, WIN_REP: 90,
-  COLLAPSE_AUM: 1000, COLLAPSE_AFTER: 50000,
+  WIN_AUM: 1e10, WIN_REP: 90,
+  COLLAPSE_AUM: 1e5, COLLAPSE_AFTER: 5e6,
   LEGACY_STEP: 0.10, LEGACY_CAP: 1.0,
 
   // --- Équipe -------------------------------------------------------------------------
   // Indice salarial par palier (salaire hebdo d'un junior niveau 1, rôle x1)
-  WAGE_INDEX: [4, 6, 15, 45, 140, 450, 1400, 4500, 14000, 45000, 150000, 500000, 1.6e6, 5e6, 1.6e7],
+  // Salaire hebdomadaire chargé d'un junior (≈ 115 k$/an), légèrement plus élevé dans les grands locaux
+  WAGE_INDEX: [2200, 2300, 2400, 2600, 2800, 3000, 3300, 3600, 4000, 4400, 4800, 5200, 5600, 6000, 6500],
+  // Unité de coût des événements, services et lancements (proportionnelle à la taille typique du palier)
+  COST_INDEX: [400, 600, 1500, 4500, 14000, 45000, 140000, 450000, 1.4e6, 4.5e6, 1.5e7, 5e7, 1.6e8, 5e8, 1.6e9],
   RANK_POWER: [1, 1.5, 2.2],
-  RANK_SALARY: [1, 1.6, 2.5],
+  RANK_SALARY: [1, 2.2, 6],   // junior ≈ 115 k$, senior ≈ 250 k$, head ≈ 700 k$+ /an (avant niveau)
   SEVERANCE_WEEKS: 4,
   SIGNING_WEEKS: 2,
   CANDIDATE_REFRESH: 4,
@@ -608,43 +611,43 @@ const TRAITS = {
 
 /* Types d'investisseurs (tier = palier de déblocage) */
 const INVESTOR_TYPES = {
-  retail:        { name: 'Particuliers (Retail)', short: 'Retail', icon: '👤', tier: 1, objective: 0.06, tolerance: 55, lockup: 4,   ticket: [250, 2500],   frac: 0.002,  rate: 2.0,  fickle: 1.3, minCompliance: 0 },
-  hnwi:          { name: 'HNWI (grandes fortunes)', short: 'HNWI', icon: '💼', tier: 2, objective: 0.08, tolerance: 65, lockup: 13,  ticket: [5e3, 4e4],    frac: 0.008,  rate: 0.25, fickle: 1.0, minCompliance: 0 },
-  uhnwi:         { name: 'UHNWI (family offices)', short: 'UHNWI', icon: '💎', tier: 5, objective: 0.10, tolerance: 70, lockup: 26,  ticket: [2.5e5, 3e6],  frac: 0.012,  rate: 0.08, fickle: 0.9, minCompliance: 40 },
-  institutional: { name: 'Institutionnels', short: 'Instit.', icon: '🏛️', tier: 7, objective: 0.07, tolerance: 50, lockup: 52,  ticket: [5e6, 5e7],    frac: 0.015,  rate: 0.07, fickle: 0.7, minCompliance: 60 },
-  pension:       { name: 'Fonds de pension', short: 'Pension', icon: '👵', tier: 9, objective: 0.05, tolerance: 40, lockup: 104, ticket: [5e7, 5e8],    frac: 0.018,  rate: 0.05, fickle: 0.6, minCompliance: 70 },
-  sovereign:     { name: 'Fonds souverains', short: 'Souverain', icon: '👑', tier: 13, objective: 0.06, tolerance: 50, lockup: 156, ticket: [1e10, 1e11], frac: 0.02,   rate: 0.04, fickle: 0.5, minCompliance: 70 }
+  retail:        { name: 'Particuliers (Retail)', short: 'Retail', icon: '👤', tier: 1, objective: 0.06, tolerance: 55, lockup: 4,   ticket: [2.5e4, 2.5e5],   frac: 0.002,  rate: 2.0,  fickle: 1.3, minCompliance: 0 },
+  hnwi:          { name: 'HNWI (grandes fortunes)', short: 'HNWI', icon: '💼', tier: 2, objective: 0.08, tolerance: 65, lockup: 13,  ticket: [5e5, 4e6],    frac: 0.008,  rate: 0.25, fickle: 1.0, minCompliance: 0 },
+  uhnwi:         { name: 'UHNWI (family offices)', short: 'UHNWI', icon: '💎', tier: 5, objective: 0.10, tolerance: 70, lockup: 26,  ticket: [2.5e7, 3e8],  frac: 0.012,  rate: 0.08, fickle: 0.9, minCompliance: 40 },
+  institutional: { name: 'Institutionnels', short: 'Instit.', icon: '🏛️', tier: 7, objective: 0.07, tolerance: 50, lockup: 52,  ticket: [5e8, 5e9],    frac: 0.015,  rate: 0.07, fickle: 0.7, minCompliance: 60 },
+  pension:       { name: 'Fonds de pension', short: 'Pension', icon: '👵', tier: 9, objective: 0.05, tolerance: 40, lockup: 104, ticket: [5e9, 5e10],    frac: 0.018,  rate: 0.05, fickle: 0.6, minCompliance: 70 },
+  sovereign:     { name: 'Fonds souverains', short: 'Souverain', icon: '👑', tier: 13, objective: 0.06, tolerance: 50, lockup: 156, ticket: [1e12, 1e13], frac: 0.02,   rate: 0.04, fickle: 0.5, minCompliance: 70 }
 };
 
 /* Paliers / locaux. bonus : effets chiffrés (voir tierBonus()). */
 const TIERS = [
   { name: 'Prop firm', min: 0, local: 'Desk loué chez une prop firm', cap: 2, icon: '🎯', bg: ['#17120d', '#2b2117'], accent: '#d9a066', bonusTxt: '—', bonus: {}, unlocks: 'Challenge prop firm, puis lancement du fonds' },
-  { name: 'Coworking', min: 5e4, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI, conso. de base, énergie, obligations courtes' },
-  { name: 'Petit bureau', min: 2.5e5, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales, industrie, services publics, obligations longues' },
-  { name: 'Boutique', min: 1e6, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, immobilier coté, haut rendement, RH' },
-  { name: 'Étage', min: 5e6, local: 'Étage entier', cap: 15, icon: '🏢', bg: ['#110f20', '#262046'], accent: '#a78bfa', bonusTxt: '+15 % vitesse trading', bonus: { trading: 0.15 }, unlocks: 'Levier 2x, short, devises, obligations indexées, UHNWI' },
-  { name: 'Immeuble', min: 2.5e7, local: 'Immeuble dédié', cap: 25, icon: '🏛️', bg: ['#15110e', '#33261b'], accent: '#f0b86e', bonusTxt: '+20 % conformité', bonus: { compliance: 0.20 }, unlocks: 'Compliance officer, crypto' },
-  { name: 'Tour locale', min: 1e8, local: 'Tour de 20 étages', cap: 40, icon: '🌆', bg: ['#0c1323', '#1e2f55'], accent: '#60a5fa', bonusTxt: '+25 % AUM retail', bonus: { retail: 0.25 }, unlocks: 'Institutionnels, levier 5x' },
-  { name: 'Siège régional', min: 5e8, local: 'Campus régional', cap: 70, icon: '🏙️', bg: ['#0b1919', '#173c3c'], accent: '#2dd4bf', bonusTxt: '+30 % intérêt institutionnel', bonus: { institutional: 0.30 }, unlocks: 'Quant, dérivés' },
-  { name: 'Tour financière', min: 2e9, local: 'Gratte-ciel', cap: 120, icon: '🌃', bg: ['#110c1b', '#2d1f4a'], accent: '#c084fc', bonusTxt: '+35 % gain réputation', bonus: { repGain: 0.35 }, unlocks: 'Fonds de pension' },
-  { name: 'Campus mondial', min: 1e10, local: 'Campus mondial', cap: 200, icon: '🌍', bg: ['#0a1811', '#14402a'], accent: '#4ade80', bonusTxt: '+40 % points recherche', bonus: { rp: 0.40 }, unlocks: 'Stratégies auto' },
-  { name: 'Gratte-ciel emblématique', min: 5e10, local: 'Tour iconique', cap: 350, icon: '🗼', bg: ['#190e11', '#4a1f2b'], accent: '#fb7185', bonusTxt: '+45 % performance fee', bonus: { perfFee: 0.45 }, unlocks: 'Marchés émergents' },
-  { name: 'QG mondial', min: 2e11, local: 'Quartier général', cap: 600, icon: '🏰', bg: ['#19150a', '#4a3c14'], accent: '#facc15', bonusTxt: '+50 % tous bonus', bonus: { all: 0.5 }, unlocks: 'Licence bancaire (activité de prêt)' },
-  { name: 'Île privée', min: 1e12, local: 'Île privée', cap: 1000, icon: '🏝️', bg: ['#06181d', '#0e4250'], accent: '#22d3ee', bonusTxt: '+60 % rétention clients', bonus: { retention: 0.60 }, unlocks: 'Fonds souverains' },
-  { name: 'Station orbitale', min: 5e12, local: 'Station spatiale', cap: 2000, icon: '🛰️', bg: ['#05060f', '#1a1d3a'], accent: '#93c5fd', bonusTxt: '+75 % portée mondiale', bonus: { reach: 0.75 }, unlocks: 'Marchés extraterrestres (actions spatiales)' },
-  { name: 'Multivers quantique', min: 2e13, local: 'Bureau dans toutes les réalités', cap: Infinity, icon: '🌌', bg: ['#0c0516', '#3b0f5c'], accent: '#e879f9', bonusTxt: '+100 % tout, endless', bonus: { everything: 1.0 }, unlocks: 'Prestige (nouvelle partie avec bonus permanents)' }
+  { name: 'Coworking', min: 5e6, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI, conso. de base, énergie, obligations courtes' },
+  { name: 'Petit bureau', min: 2.5e7, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales, industrie, services publics, obligations longues' },
+  { name: 'Boutique', min: 1e8, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, immobilier coté, haut rendement, RH' },
+  { name: 'Étage', min: 5e8, local: 'Étage entier', cap: 15, icon: '🏢', bg: ['#110f20', '#262046'], accent: '#a78bfa', bonusTxt: '+15 % vitesse trading', bonus: { trading: 0.15 }, unlocks: 'Levier 2x, short, devises, obligations indexées, UHNWI' },
+  { name: 'Immeuble', min: 2.5e9, local: 'Immeuble dédié', cap: 25, icon: '🏛️', bg: ['#15110e', '#33261b'], accent: '#f0b86e', bonusTxt: '+20 % conformité', bonus: { compliance: 0.20 }, unlocks: 'Compliance officer, crypto' },
+  { name: 'Tour locale', min: 1e10, local: 'Tour de 20 étages', cap: 40, icon: '🌆', bg: ['#0c1323', '#1e2f55'], accent: '#60a5fa', bonusTxt: '+25 % AUM retail', bonus: { retail: 0.25 }, unlocks: 'Institutionnels, levier 5x' },
+  { name: 'Siège régional', min: 5e10, local: 'Campus régional', cap: 70, icon: '🏙️', bg: ['#0b1919', '#173c3c'], accent: '#2dd4bf', bonusTxt: '+30 % intérêt institutionnel', bonus: { institutional: 0.30 }, unlocks: 'Quant, dérivés' },
+  { name: 'Tour financière', min: 2e11, local: 'Gratte-ciel', cap: 120, icon: '🌃', bg: ['#110c1b', '#2d1f4a'], accent: '#c084fc', bonusTxt: '+35 % gain réputation', bonus: { repGain: 0.35 }, unlocks: 'Fonds de pension' },
+  { name: 'Campus mondial', min: 1e12, local: 'Campus mondial', cap: 200, icon: '🌍', bg: ['#0a1811', '#14402a'], accent: '#4ade80', bonusTxt: '+40 % points recherche', bonus: { rp: 0.40 }, unlocks: 'Stratégies auto' },
+  { name: 'Gratte-ciel emblématique', min: 5e12, local: 'Tour iconique', cap: 350, icon: '🗼', bg: ['#190e11', '#4a1f2b'], accent: '#fb7185', bonusTxt: '+45 % performance fee', bonus: { perfFee: 0.45 }, unlocks: 'Marchés émergents' },
+  { name: 'QG mondial', min: 2e13, local: 'Quartier général', cap: 600, icon: '🏰', bg: ['#19150a', '#4a3c14'], accent: '#facc15', bonusTxt: '+50 % tous bonus', bonus: { all: 0.5 }, unlocks: 'Licence bancaire (activité de prêt)' },
+  { name: 'Île privée', min: 1e14, local: 'Île privée', cap: 1000, icon: '🏝️', bg: ['#06181d', '#0e4250'], accent: '#22d3ee', bonusTxt: '+60 % rétention clients', bonus: { retention: 0.60 }, unlocks: 'Fonds souverains' },
+  { name: 'Station orbitale', min: 5e14, local: 'Station spatiale', cap: 2000, icon: '🛰️', bg: ['#05060f', '#1a1d3a'], accent: '#93c5fd', bonusTxt: '+75 % portée mondiale', bonus: { reach: 0.75 }, unlocks: 'Marchés extraterrestres (actions spatiales)' },
+  { name: 'Multivers quantique', min: 2e15, local: 'Bureau dans toutes les réalités', cap: Infinity, icon: '🌌', bg: ['#0c0516', '#3b0f5c'], accent: '#e879f9', bonusTxt: '+100 % tout, endless', bonus: { everything: 1.0 }, unlocks: 'Prestige (nouvelle partie avec bonus permanents)' }
 ];
 
 /* Améliorations : coût cash + points de recherche par niveau */
 const UPGRADES = [
-  { id: 'software',   icon: '🖥️', name: 'Logiciel de trading',          tier: 1, cost: [60, 2500, 150000],      rp: [0, 10, 40],  desc: 'Frais de transaction −15 % par niveau.' },
-  { id: 'pr',         icon: '📣', name: 'Campagne de relations presse', tier: 1, cost: [90, 6000, 400000],      rp: [0, 5, 20],   desc: 'Réputation +5 immédiate et +4 de réputation cible par niveau.' },
-  { id: 'data',       icon: '📡', name: 'Abonnement data premium',      tier: 2, cost: [400, 20000, 1.5e6],     rp: [5, 20, 60],  desc: "Qualité d'information accrue (prévisions plus fiables, alpha)." },
-  { id: 'training',   icon: '🎓', name: 'Formation continue',           tier: 2, cost: [300, 15000, 8e5],       rp: [5, 15, 40],  desc: 'Formation −20 % par niveau, recherche +10 % par niveau.' },
-  { id: 'audit',      icon: '📋', name: "Bureau d'audit",               tier: 3, cost: [1500, 60000, 3e6],      rp: [5, 20, 50],  desc: 'Conformité cible +6 par niveau.' },
-  { id: 'riskengine', icon: '🧯', name: 'Moteur de risque',             tier: 4, cost: [8000, 3e5, 1.5e7],      rp: [10, 30, 80], desc: 'Volatilité effective −5 % par niveau.' },
-  { id: 'crm',        icon: '🗂️', name: 'CRM investisseurs',            tier: 4, cost: [10000, 4e5, 2e7],       rp: [10, 30, 80], desc: 'Attractivité auprès des investisseurs +12 % par niveau.' },
-  { id: 'autostrat',  icon: '🤖', name: 'Stratégies automatisées',      tier: 10, cost: [5e8],                  rp: [300],        desc: 'Rééquilibrage auto toujours disponible + alpha systématique +1 %/an.' }
+  { id: 'software',   icon: '🖥️', name: 'Logiciel de trading',          tier: 1, cost: [6000, 2.5e5, 1.5e7],      rp: [0, 10, 40],  desc: 'Frais de transaction −15 % par niveau.' },
+  { id: 'pr',         icon: '📣', name: 'Campagne de relations presse', tier: 1, cost: [9000, 6e5, 4e7],      rp: [0, 5, 20],   desc: 'Réputation +5 immédiate et +4 de réputation cible par niveau.' },
+  { id: 'data',       icon: '📡', name: 'Abonnement data premium',      tier: 2, cost: [4e4, 2e6, 1.5e8],     rp: [5, 20, 60],  desc: "Qualité d'information accrue (prévisions plus fiables, alpha)." },
+  { id: 'training',   icon: '🎓', name: 'Formation continue',           tier: 2, cost: [3e4, 1.5e6, 8e7],       rp: [5, 15, 40],  desc: 'Formation −20 % par niveau, recherche +10 % par niveau.' },
+  { id: 'audit',      icon: '📋', name: "Bureau d'audit",               tier: 3, cost: [1.5e5, 6e6, 3e8],      rp: [5, 20, 50],  desc: 'Conformité cible +6 par niveau.' },
+  { id: 'riskengine', icon: '🧯', name: 'Moteur de risque',             tier: 4, cost: [8e5, 3e7, 1.5e9],      rp: [10, 30, 80], desc: 'Volatilité effective −5 % par niveau.' },
+  { id: 'crm',        icon: '🗂️', name: 'CRM investisseurs',            tier: 4, cost: [1e6, 4e7, 2e9],       rp: [10, 30, 80], desc: 'Attractivité auprès des investisseurs +12 % par niveau.' },
+  { id: 'autostrat',  icon: '🤖', name: 'Stratégies automatisées',      tier: 10, cost: [5e10],                  rp: [300],        desc: 'Rééquilibrage auto toujours disponible + alpha systématique +1 %/an.' }
 ];
 
 /* =============================================================================
@@ -1363,7 +1366,7 @@ const Team = {
           e.riskPts += p * 0.7 * m; e.compliance += p * 0.4;
           break;
         case 'sales':
-          e.inflow += p * 0.05 * (has('charismatique') ? 1.5 : 1) * m;
+          e.inflow += p * 0.035 * (has('charismatique') ? 1.5 : 1) * m;
           break;
         case 'hr':
           e.trainDisc += p * 0.03; e.recruit += p * 0.12;
@@ -1380,7 +1383,7 @@ const Team = {
     }
     e.fee = Math.min(0.6, e.fee);
     e.volRed = Math.min(0.35, e.volRed + Progression.upg('riskengine') * 0.05);
-    e.inflow = Math.min(2, e.inflow);
+    e.inflow = Math.min(1.5, e.inflow);
     e.trainDisc = Math.min(0.5, e.trainDisc);
     e.quantAlpha = Math.min(0.03, e.quantAlpha);
     this._cache = e; this._cacheKey = key;
@@ -1417,7 +1420,7 @@ const Team = {
     for (let i = 0; i < 3; i++) { const c = this.makeCandidate(); if (c) S.team.candidates.push(c); }
     S.team.nextRefresh = S.week + CONFIG.CANDIDATE_REFRESH;
   },
-  headhunterCost() { return 3 * this.wageIndex(); },
+  headhunterCost() { return 3 * U(); },
   headhunt() {
     const c = this.headhunterCost();
     if (S.cash < c) return UI.toast('Cash insuffisant.', 'bad');
@@ -1425,15 +1428,18 @@ const Team = {
     this.refreshCandidates(true);
     UI.renderAll();
   },
-  signingCost(c) { return this.salary(c) * CONFIG.SIGNING_WEEKS; },
-  hire(id) {
+  signingCost(c) { return this.salary(Object.assign({}, c, { salaryMult: 1 })) * CONFIG.SIGNING_WEEKS; },
+  /* equity : payé moitié en parts (salaire −50 %, +2 % des commissions de performance) */
+  hire(id, equity = false) {
     const c = S.team.candidates.find(x => x.id === id);
     if (!c) return;
+    if (equity) { c.salaryMult = 0.5; c.equity = 0.02; }
     if (S.team.employees.length >= this.capacity()) return UI.toast('Capacité du local atteinte : déménagez pour recruter plus.', 'warn');
     const cost = this.signingCost(c);
     if (S.cash < cost) return UI.toast('Cash insuffisant pour la prime de signature.', 'bad');
     S.cash -= cost;
-    c.hiredWeek = S.week; c.morale = 70; c.lastBoost = S.week;
+    c.hiredWeek = S.week; c.morale = equity ? 80 : 70; c.lastBoost = S.week;
+    if (c.equity) S.fund.carry = Math.min(0.4, S.fund.carry + c.equity);
     S.events.flags.everHired = true;
     S.team.employees.push(c);
     S.team.candidates = S.team.candidates.filter(x => x.id !== id);
@@ -1446,6 +1452,7 @@ const Team = {
     if (!e) return;
     const sev = free ? 0 : this.salary(e) * CONFIG.SEVERANCE_WEEKS;
     S.cash -= sev;
+    if (e.equity) S.fund.carry = Math.max(0, S.fund.carry - e.equity);
     S.team.employees = S.team.employees.filter(x => x.id !== id);
     this.invalidate();
     Game.log(`Départ de ${e.name} (${this.title(e)})${sev ? ', indemnité ' + fmtMoney(sev) : ''}.`, 'warn');
@@ -1653,7 +1660,7 @@ const Investors = {
   },
   perfFactor() { return clamp(1 + (this.perfAnnual(26) - 0.06) * 3, 0.5, 1.6); },
   /* Saturation : plus le fonds est gros, plus il est difficile de croître en % */
-  saturation(A) { return Math.pow(1e6 / Math.max(A, 1e6), 0.15); },
+  saturation(A) { return Math.pow(1e8 / Math.max(A, 1e8), 0.15); },
   typeBonus(t) {
     if (t === 'retail') return 1 + Progression.tierBonus('retail') + Strat.b('retail');
     if (t === 'hnwi' || t === 'uhnwi') return 1 + Strat.b('hnwi');
@@ -1806,7 +1813,7 @@ const Investors = {
       const n = poisson(Math.min(20, T.rate * att * this.typeBonus(t)));
       for (let i = 0; i < n; i++) {
         let ticket = rand(T.ticket[0], T.ticket[1]) + A * T.frac * sat * rand(0.5, 1.5);
-        if (A > 50000) ticket = Math.min(ticket, A * 0.3);
+        if (A > 5e6) ticket = Math.min(ticket, A * 0.3);
         this.newInvestor(t, ticket);
         subs += ticket;
       }
@@ -1947,7 +1954,7 @@ const Prop = {
     f.navps = CONFIG.START_NAVPS; f.hwm = f.navps; f.peakNavps = f.navps; f.navHist = [f.navps]; f.lastPerfFeeWeek = S.week; f.ddAlerted = false;
     S.history = { week: [S.week], navps: [f.navps], aum: [0], bench: [null] };
     S.regimeStat = null;
-    const seed = clamp(4000 + ann * 40000, 4000, 30000);
+    const seed = clamp(1e6 + ann * 1e7, 1e6, 5e6);   // « amis, famille et business angels »
     for (let i = 0; i < 3; i++) Investors.newInvestor('retail', seed / 3).name += ' (client fondateur)';
     Portfolio.deposit(seed);
     Portfolio.syncNavps();
@@ -1965,7 +1972,7 @@ function addRep(d) { S.reputation = clamp(S.reputation + d, 0, 100); }
 function addCompliance(d) { S.compliance = clamp(S.compliance + d, 0, 100); }
 function riskShock(d) { S.riskShock += d; S.risk = clamp(S.risk + d, 0, 100); }
 function payCash(x) { S.cash -= x; }
-function U() { return Team.wageIndex(); } // unité de coût proportionnelle au palier
+function U() { return CONFIG.COST_INDEX[S.tier - 1]; } // unité de coût proportionnelle au palier
 function sev() { return CONFIG.MODES[S.difficulty].eventSeverity; }
 function lossAUM(pct) { const A = Portfolio.aum(); Portfolio.withdraw(A * pct); Portfolio.syncNavps(); return A * pct; }
 
@@ -2007,9 +2014,9 @@ const Risk = {
     return clamp(c, 0, 100);
   },
   reputationTarget() {
-    const A = Math.max(Game.totalAUM(), 1000);
+    const A = Math.max(Game.totalAUM(), 1e5);
     const perf = Investors.perfAnnual(52);
-    let t = 15 + 7 * Math.log10(A / 1000);
+    let t = 15 + 7 * Math.log10(A / 1e5);
     t += clamp((perf - 0.05) * 80, -15, 20);
     t += clamp((S.compliance - 60) / 4, -15, 10);
     t += S.repBonus + Progression.upg('pr') * 4;
@@ -2494,7 +2501,7 @@ const EVENTS = [
   {
     id: 'prop_copy', prop: true, icon: '📡', title: 'Offre de copy-trading',
     cond: () => S.prop.phase === 'funded', cooldown: 30, weight: () => 1,
-    prepare() { return { gain: 20 + S.prop.payouts * 0.05 }; },
+    prepare() { return { gain: 2000 + S.prop.payouts * 0.05 }; },
     text: p => `Une plateforme de copy-trading veut répliquer vos positions pour ses abonnés et vous reverser une commission (≈ ${fmtMoney(p.gain)}).`,
     options: [
       { label: 'Accepter', hint: p => `💰 +${fmtMoney(p.gain)} · ⭐ +3 · 🛡️ −4 (statut réglementaire flou)`, apply(p) { S.cash += p.gain; addRep(3); addCompliance(-4); } },
@@ -2505,12 +2512,12 @@ const EVENTS = [
   {
     id: 'prop_payout', prop: true, icon: '⏳', title: 'Versement retardé',
     cond: () => S.prop.phase === 'funded' && S.prop.payouts > 0, cooldown: 30, weight: () => 0.7,
-    prepare() { return { amt: Math.max(20, S.prop.payouts * 0.1) }; },
+    prepare() { return { amt: Math.max(2000, S.prop.payouts * 0.1) }; },
     text: p => `La prop firm « vérifie » votre dernier versement et le bloque temporairement (${fmtMoney(p.amt)}). Rumeurs de difficultés financières…`,
     options: [
       { label: 'Patienter', hint: p => `70 % : versé plus tard · 30 % : ${fmtMoney(p.amt)} perdus`, apply(p) { if (rng() < 0.3) { payCash(p.amt); Game.log('La prop firm ne versera jamais la somme.', 'bad'); } } },
       { label: 'Négocier un versement réduit immédiat', hint: p => `💰 −${fmtMoney(p.amt * 0.25)} (décote acceptée)`, apply(p) { payCash(p.amt * 0.25); } },
-      { label: 'Menacer d’un recours', hint: p => `💰 −${fmtMoney(15)} (avocat) · 🛡️ +3 · versement garanti`, apply() { payCash(15); addCompliance(3); } }
+      { label: 'Menacer d’un recours', hint: p => `💰 −${fmtMoney(1500)} (avocat) · 🛡️ +3 · versement garanti`, apply() { payCash(1500); addCompliance(3); } }
     ]
   },
   {
@@ -2536,7 +2543,7 @@ const EVENTS = [
   {
     id: 'm_press', icon: '📰', title: 'Jalon : portrait dans la presse financière',
     cond: () => false, cooldown: 0, weight: () => 0, prepare() { return {}; },
-    text: () => `Votre fonds dépasse 500 k$ : un grand magazine financier veut vous consacrer un portrait. Quel angle choisir ?`,
+    text: () => `Votre fonds dépasse 50 M$ : un grand magazine financier veut vous consacrer un portrait. Quel angle choisir ?`,
     options: [
       { label: 'Mettre en avant vos performances', hint: () => '🤝 +5 · ⭐ +3 · 30 % de risque de citation déformée (⭐ −3)', apply() { confAll(5); addRep(rng() < 0.3 ? -3 : 3); } },
       { label: "Mettre en avant l'équipe", hint: () => 'Moral de toute l’équipe +15 · ⭐ +2', apply() { S.team.employees.forEach(e => { e.morale = Math.min(100, (e.morale ?? 70) + 15); }); addRep(2); } },
@@ -2556,7 +2563,7 @@ const EVENTS = [
   {
     id: 'm_equity', icon: '🏦', title: 'Jalon : entrée au capital de votre société',
     cond: () => false, cooldown: 0, weight: () => 0, prepare() { return { a: Game.totalAUM() * 0.02, b: Game.totalAUM() * 0.009 }; },
-    text: () => `Votre société gère plus de 10 M$. Un groupe financier propose de racheter une part de votre société de gestion.`,
+    text: () => `Votre société gère plus de 1 Md$. Un groupe financier propose de racheter une part de votre société de gestion.`,
     options: [
       { label: 'Céder 20 %', hint: p => `💰 +${fmtMoney(p.a)} immédiatement · vous ne touchez plus que 80 % des frais`, apply(p) { S.cash += p.a; S.feeShare *= 0.8; } },
       { label: 'Céder 10 %', hint: p => `💰 +${fmtMoney(p.b)} · 90 % des frais`, apply(p) { S.cash += p.b; S.feeShare *= 0.9; } },
@@ -2566,7 +2573,7 @@ const EVENTS = [
   {
     id: 'm_conf', icon: '🎤', title: 'Jalon : conférence annuelle des investisseurs',
     cond: () => false, cooldown: 0, weight: () => 0, prepare() { return { c1: 40 * U(), c2: 5 * U() }; },
-    text: () => `Avec 50 M$ sous gestion, il est temps d'organiser votre première conférence investisseurs.`,
+    text: () => `Avec 5 Md$ sous gestion, il est temps d'organiser votre première conférence investisseurs.`,
     options: [
       { label: 'Grande conférence', hint: p => `💰 −${fmtMoney(p.c1)} · 🤝 +8 · ⭐ +4`, apply(p) { payCash(p.c1); confAll(8); addRep(4); } },
       { label: 'Webinaire sobre', hint: p => `💰 −${fmtMoney(p.c2)} · 🤝 +3`, apply(p) { payCash(p.c2); confAll(3); } },
@@ -2726,7 +2733,7 @@ const ACHIEVEMENTS = [
   { id: 'tier5', icon: '🏢', name: 'Un étage à soi', desc: 'Atteindre le palier 5', test: s => s.tier >= 5 },
   { id: 'tier8', icon: '🏙️', name: 'Poids lourd régional', desc: 'Atteindre le palier 8', test: s => s.tier >= 8 },
   { id: 'multi', icon: '🧩', name: 'Multi-fonds', desc: 'Lancer un fonds satellite', test: s => s.satellites.length > 0 },
-  { id: 'cashM', icon: '💰', name: 'Millionnaire', desc: '1 M$ de trésorerie dans la société', test: s => s.cash >= 1e6 },
+  { id: 'cashM', icon: '💰', name: 'Trésor de guerre', desc: '100 M$ de trésorerie dans la société', test: s => s.cash >= 1e8 },
   { id: 'win', icon: '🏆', name: 'Légende', desc: 'Remporter la partie', test: s => s.won }
 ];
 const Achievements = {
@@ -2944,7 +2951,7 @@ const Analysis = {
    Chaque étape : texte, élément à mettre en surbrillance (target), et soit une
    condition de passage automatique (done), soit un bouton « Suivant » (next). */
 const TUTORIAL = [
-  { title: 'Bienvenue !', next: true, text: () => `Vous débutez comme <b>trader de prop firm</b> : une société vous confie de l'argent à gérer. Si vous prouvez votre talent, vous pourrez lancer <b>votre propre hedge fund</b>, puis le faire grandir jusqu'à 1 Md$ et une réputation de 90/100.` },
+  { title: 'Bienvenue !', next: true, text: () => `Vous débutez comme <b>trader de prop firm</b> : une société vous confie de l'argent à gérer. Si vous prouvez votre talent, vous pourrez lancer <b>votre propre hedge fund</b>, puis le faire grandir jusqu'à 10 Md$ et une réputation de 90/100.` },
   { title: 'Le challenge', target: '[data-tab="portfolio"]', done: () => UI.tab === 'portfolio', text: () => `Ouvrez l'onglet <b>💼 Portefeuille</b> (en surbrillance).` },
   { title: 'Acheter le challenge', target: '[data-act="prop-buy"]', done: s => s.prop.phase !== 'idle', text: () => { const r = Prop.rules(); return `Payez le challenge (${fmtMoney(r.fee)}). Objectif : gagner <b>${fmtPct(r.target, 0, true)}</b> sans jamais perdre <b>${fmtPct(r.maxDD, 0)}</b> depuis votre plus haut${r.deadline ? `, en ${r.deadline} semaines maximum` : ''}. La perte maximale est éliminatoire !`; } },
   { title: 'Votre allocation', target: '[data-act="preset"]', done: s => s.tutorial.preset, text: () => `Le compte suit votre <b>allocation cible</b>. Choisissez un préréglage : <b>⚖️ Équilibré</b> est un bon début. Plus tard, vous ajusterez ligne par ligne avec les curseurs.${Portfolio.isCasual() ? '' : ' En intermédiaire, cliquez ensuite sur « Appliquer l’allocation ».'}` },
@@ -3120,7 +3127,7 @@ const Prestige = {
 };
 
 /* --- Jalons narratifs du milieu de partie --- */
-const MILESTONES = [{ id: 'm_press', at: 5e5 }, { id: 'm_dd', at: 2.5e6 }, { id: 'm_equity', at: 1e7 }, { id: 'm_conf', at: 5e7 }, { id: 'm_rank', at: 2.5e8 }];
+const MILESTONES = [{ id: 'm_press', at: 5e7 }, { id: 'm_dd', at: 2.5e8 }, { id: 'm_equity', at: 1e9 }, { id: 'm_conf', at: 5e9 }, { id: 'm_rank', at: 2.5e10 }];
 const Milestones = {
   check() {
     if (!S.prop.launched) return;
@@ -3208,7 +3215,7 @@ const Progression = {
 
     if (!S.won && A >= CONFIG.WIN_AUM && S.reputation >= CONFIG.WIN_REP) {
       S.won = true;
-      Game.log('🏆 VICTOIRE : 1 Md$ sous gestion et une réputation d’exception !', 'tier');
+      Game.log('🏆 VICTOIRE : 10 Md$ sous gestion et une réputation d’exception !', 'tier');
       if (S.events.pending) S.events.victoryQueued = true; // affichée après la décision en cours
       else UI.showVictory();
       return;
@@ -3640,6 +3647,7 @@ const UI = {
     const a = el.dataset.act, id = el.dataset.id ? Number(el.dataset.id) : null, k = el.dataset.k;
     switch (a) {
       case 'hire': Team.hire(id); break;
+      case 'hire-eq': Team.hire(id, true); break;
       case 'fire': {
         const emp = S.team.employees.find(x => x.id === id);
         if (emp) this.confirm(`Licencier ${emp.name} ?`, `Indemnité : ${fmtMoney(Team.salary(emp) * CONFIG.SEVERANCE_WEEKS)}.`, () => Team.fire(id));
@@ -4036,7 +4044,7 @@ const UI = {
         <div class="row between"><span class="title">${ROLES[emp.role].icon} ${esc(emp.name)}</span><span class="pill">niv. ${emp.level}</span></div>
         <div class="small accent">${Team.title(emp)}</div>
         <div class="traits">${emp.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${emp.spec ? `<span class="pill b">Spécialité : ${CONFIG.ASSETS[emp.spec].name}</span>` : ''}</div>
-        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(emp))}/sem</span></div>
+        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(emp) * 52)}/an <span class="muted">(${fmtMoney(Team.salary(emp))}/sem)</span></span></div>
         <div class="kv small"><span class="muted">Puissance</span><span class="num">${fmtNum(Team.power(emp), 1)}</span></div>
         <div class="kv small"><span class="muted">Moral</span><span class="num ${(emp.morale ?? 70) < 40 ? 'red' : (emp.morale ?? 70) < 60 ? 'amber' : 'green'}">${Math.round(emp.morale ?? 70)}/100</span></div>
         <div class="gauge"><div style="width:${emp.morale ?? 70}%;background:${(emp.morale ?? 70) < 40 ? 'var(--red)' : (emp.morale ?? 70) < 60 ? 'var(--amber)' : 'var(--green)'}"></div></div>
@@ -4057,10 +4065,11 @@ const UI = {
         <div class="small accent">${Team.title(c)}</div>
         <div class="traits">${c.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${c.spec ? `<span class="pill b">${CONFIG.ASSETS[c.spec].name}</span>` : ''}</div>
         <div class="small muted">${ROLES[c.role].effect}</div>
-        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(c))}/sem</span></div>
-        <button class="btn small primary mt" data-act="hire" data-id="${c.id}" ${full || S.cash < cost ? 'disabled' : ''}>Recruter (prime ${fmtMoney(cost)})</button>
+        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(c) * 52)}/an</span></div>
+        <div class="row mt"><button class="btn small primary" data-act="hire" data-id="${c.id}" ${full || S.cash < cost ? 'disabled' : ''}>Recruter (prime ${fmtMoney(cost)})</button>
+        <button class="btn small" data-act="hire-eq" data-id="${c.id}" ${full || S.cash < cost / 2 ? 'disabled' : ''} title="Salaire −50 % ; en échange, 2 % des futures commissions de performance">Payer moitié en parts (prime ${fmtMoney(cost / 2)})</button></div>
       </div>`;
-    }).join('') || `<div class="muted">${S.tier < 2 ? 'Personne ne rejoint un trader de prop firm : lancez votre fonds et atteignez le palier 2 (Coworking, 50 k$ d’AUM).' : 'Aucun candidat.'}</div>`;
+    }).join('') || `<div class="muted">${S.tier < 2 ? 'Personne ne rejoint un trader de prop firm : lancez votre fonds et atteignez le palier 2 (Coworking, 5 M$ d’AUM).' : 'Aucun candidat.'}</div>`;
     const roles = Object.entries(ROLES).map(([id, r]) => `<span class="pill ${Team.roleUnlocked(id) ? 'g' : ''}">${r.icon} ${r.titles[0]}${Team.roleUnlocked(id) ? '' : ' 🔒' + r.tier}</span>`).join(' ');
     return `
       <div class="grid g3">
@@ -4068,7 +4077,7 @@ const UI = {
           <div class="kv"><span class="muted">Employés</span><b>${S.team.employees.length} / ${cap === Infinity ? '∞' : cap}</b></div>
           <div class="kv"><span class="muted">Masse salariale</span><span class="num">${fmtMoney(Team.payroll())}/sem</span></div>
           <div class="kv"><span class="muted">Frais de gestion encaissés</span><span class="num">${fmtMoney(S.last.mgmt)}/sem</span></div>
-          <div class="small muted mt">Les salaires de marché suivent le standing du local (indice ×${fmtNum(Team.wageIndex())}).</div></div>
+          <div class="small muted mt">Salaires réels chargés : un junior coûte environ ${fmtMoney(Team.wageIndex() * 52)}/an ici. Payer « moitié en parts » divise le salaire par deux contre 2 % des commissions de performance.</div></div>
         <div class="card"><h4>Effets de l'équipe</h4>
           <div class="kv small"><span class="muted">Qualité d'information</span><span>${fmtPct(Team.infoQuality(), 0)}</span></div>
           <div class="kv small"><span class="muted">Réduction des frais</span><span>${fmtPct(Portfolio.feeReduction(), 0)}</span></div>
@@ -4530,7 +4539,7 @@ const UI = {
     const l = Legacy.get();
     const lb = Legacy.bonus();
     this.showModal(`<div class="icon">📊</div><h2>Hedge Fund Tycoon</h2>
-      <p>Commencez comme trader de prop firm avec ${fmtMoney(CONFIG.START_CASH * (1 + lb))} : réussissez le challenge, prouvez vos résultats sur un compte financé, puis lancez votre fonds et bâtissez un empire de la gestion alternative. Objectif : <b>1 Md$ d'AUM</b> et une <b>réputation ≥ 90</b>.</p>
+      <p>Commencez comme trader de prop firm avec ${fmtMoney(CONFIG.START_CASH * (1 + lb))} : réussissez le challenge, prouvez vos résultats sur un compte financé, puis lancez votre fonds et bâtissez un empire de la gestion alternative. Objectif : <b>10 Md$ d'AUM</b> et une <b>réputation ≥ 90</b>.</p>
       ${l.runs ? `<p class="small green">Legacy : ${l.runs} partie(s) précédente(s), meilleur AUM ${fmtMoney(l.bestAUM || 0)} → +${fmtPct(lb, 0)} de capital.</p>` : ''}
       <div class="row"><label for="fundNameIn" class="small muted">Nom du fonds</label><input type="text" id="fundNameIn" maxlength="32" value="Phoenix Capital" style="flex:1"></div>
       <div class="diffopt">
