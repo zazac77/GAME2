@@ -1325,23 +1325,11 @@ const Portfolio = {
       prudent:   { label: '🛡️ Prudent', t: mk([['equities', 10], ['health', 5, 'equities'], ['staples', 5, 'equities'], ['utilities', 5, 'equities'], ['bonds', 35], ['bonds_short', 20, 'bonds'], ['inflation', 5, 'bonds']]) },
       equilibre: { label: '⚖️ Équilibré', t: mk([['equities', 30], ['tech', 8, 'equities'], ['health', 6, 'equities'], ['finance', 6, 'equities'], ['bonds', 25], ['bonds_long', 5, 'bonds'], ['highyield', 5, 'bonds'], ['commodities', 5, 'bonds']]) },
       dynamique: { label: '🚀 Dynamique', t: mk([['equities', 30], ['tech', 15, 'equities'], ['finance', 8, 'equities'], ['industrials', 8, 'equities'], ['energy', 5, 'equities'], ['commodities', 7, 'equities'], ['crypto', 5, 'equities'], ['bonds', 5], ['highyield', 5, 'bonds']]) },
-      rotation:  { label: '🔄 Rotation sectorielle', t: mk(this.rotationList()) },
-      prevision: (() => { const t = this.forecastTarget(); const n = Object.values(t).filter(v => v < 0).length; return { label: n ? `🔮 Selon les prévisions (dont ${n} short${n > 1 ? 's' : ''})` : '🔮 Selon les prévisions', t }; })()
+      prevision: (() => { const t = this.forecastTarget(); const n = Object.values(t).filter(v => v < 0).length; return { label: n ? `🔮 Prévisionnelle (dont ${n} short${n > 1 ? 's' : ''})` : '🔮 Prévisionnelle', t }; })()
     };
     if (Analysis.optimizerAvailable()) { const t = Analysis.optimal().t; const n = Object.values(t).filter(v => v < 0).length; out.optimise = { label: n ? `⚙️ Optimisé (quant, dont ${n} short${n > 1 ? 's' : ''})` : '⚙️ Optimisé (quant)', t }; }
     return out;
   },
-  /* Rotation sectorielle selon le régime perçu : cycliques en hausse, défensives en baisse */
-  rotationList() {
-    switch (S.market.perceived) {
-      case 'bull':   return [['equities', 20], ['tech', 20, 'equities'], ['industrials', 15, 'equities'], ['finance', 15, 'equities'], ['energy', 5, 'equities'], ['highyield', 10, 'bonds'], ['bonds', 5]];
-      case 'bubble': return [['tech', 25, 'equities'], ['equities', 20], ['crypto', 10, 'equities'], ['industrials', 10, 'equities'], ['finance', 10, 'equities'], ['bonds', 15]];
-      case 'bear':   return [['health', 15, 'equities'], ['staples', 15, 'equities'], ['utilities', 15, 'bonds'], ['bonds_long', 20, 'bonds'], ['bonds', 15], ['inflation', 5, 'bonds']];
-      case 'crisis': return [['bonds_long', 30, 'bonds'], ['bonds', 20], ['bonds_short', 20, 'bonds'], ['staples', 5, 'bonds'], ['health', 5, 'bonds']];
-      default:       return [['equities', 25], ['health', 10, 'equities'], ['staples', 10, 'equities'], ['finance', 10, 'equities'], ['tech', 10, 'equities'], ['bonds', 25]];
-    }
-  },
-
   applyPreset(id) {
     const p = this.presets()[id]; if (!p) return;
     for (const k of RISKY) S.fund.target[k] = 0;
@@ -2591,7 +2579,7 @@ const EVENTS = [
     options: [
       { label: 'Faire une pause et analyser', hint: () => '🔬 +4 · passe en allocation Prudente', apply() { S.rp += 4; Portfolio.applyPreset('prudent'); } },
       { label: 'Augmenter la taille des positions', hint: () => 'Passe en allocation Dynamique · risque +10', apply() { Portfolio.applyPreset('dynamique'); riskShock(10); } },
-      { label: 'Suivre strictement les prévisions', hint: () => 'Passe en allocation « Selon les prévisions » · 🔬 −2', apply() { S.rp = Math.max(0, S.rp - 2); Portfolio.applyPreset('prevision'); } }
+      { label: 'Suivre strictement les prévisions', hint: () => 'Passe en allocation « Prévisionnelle » · 🔬 −2', apply() { S.rp = Math.max(0, S.rp - 2); Portfolio.applyPreset('prevision'); } }
     ]
   },
   /* ---------- Événements déclenchés par le jeu (jamais tirés au hasard) ---------- */
@@ -3946,7 +3934,7 @@ const UI = {
           <div class="small mt">${{ bull: '👉 Conseil : Dynamique.', range: '👉 Conseil : Équilibré, ne touchez à rien.', bear: '👉 Conseil : Prudent si ça dure.', crisis: '👉 Conseil : Prudent, coupez le levier.', bubble: '👉 Conseil : profitez-en mais préparez la sortie.' }[m.perceived]} ${S.prop.launched ? 'Une fois le fonds lancé, ce sont surtout les clients (réputation, confiance) qui le font grandir.' : 'En prop firm, la régularité prime : un drawdown trop fort élimine.'}</div></div>
         <div class="card"><h4>Qualité d'information</h4><div style="font-size:22px;font-weight:700">${fmtPct(q, 0)}</div>
           <div class="gauge"><div style="width:${q * 100}%;background:var(--blue)"></div></div>
-          <div class="small muted mt">Chaque carte d'actif affiche le <b>rendement prévu</b> pour les semaines à venir (il dépend du régime en cours) et sa marge d'erreur. Plus la qualité d'information est haute, plus la prévision est précise. Usage : renforcez les actifs 🟢, réduisez les 🔴, ou utilisez le préréglage « 🔮 Selon les prévisions » (onglet Portefeuille). La qualité d'information génère aussi un alpha jusqu'à +2,5 %/an.</div></div>
+          <div class="small muted mt">Chaque carte d'actif affiche le <b>rendement prévu</b> pour les semaines à venir (il dépend du régime en cours) et sa marge d'erreur. Plus la qualité d'information est haute, plus la prévision est précise. Usage : renforcez les actifs 🟢, réduisez les 🔴, ou utilisez le préréglage « 🔮 Prévisionnelle » (onglet Portefeuille). La qualité d'information génère aussi un alpha jusqu'à +2,5 %/an.</div></div>
         <div class="card"><h4>Facteurs temporaires</h4><div class="row">${mods}</div>
           <div class="small muted mt">Régimes possibles : 🐂 haussier, ↔️ latéral, 🐻 baissier, 🔥 crise (corrélations ↑, volatilité ↑), 🫧 bulle (les actifs risqués surperforment… puis chutent).</div></div>
       </div>
@@ -4367,6 +4355,7 @@ const UI = {
       const evalT = t => F.evalW(F.keys.map(k => (t[k] || 0) / 100));
       const presets = Portfolio.presets();
       const marks = [['Vous', evalT(Object.fromEntries(RISKY.map(k => [k, Portfolio.weights()[k] * 100]))), '#fff'], ['Prudent', evalT(presets.prudent.t), '#60a5fa'], ['Équilibré', evalT(presets.equilibre.t), '#34d399'], ['Dynamique', evalT(presets.dynamique.t), '#f59e0b']];
+      marks.push(['Prévisionnelle', evalT(presets.prevision.t), '#22d3ee']);
       if (opt.p) marks.push(['Optimisé', opt.p, '#e879f9']);
       const all = F.pts.concat(marks.map(m => m[1]));
       const vmax = Math.max(...all.map(p => p.vol)) * 1.05 || 0.1, rmin = Math.min(0, ...all.map(p => p.r)), rmax = Math.max(...all.map(p => p.r)) * 1.05 || 0.1;
@@ -4376,7 +4365,12 @@ const UI = {
         <text x="${W / 2}" y="${H - 8}" fill="#8b95a8" font-size="10" text-anchor="middle">Volatilité (risque) →</text>
         <text x="10" y="${H / 2}" fill="#8b95a8" font-size="10" transform="rotate(-90 10 ${H / 2})" text-anchor="middle">Rendement prévu →</text>
         ${F.pts.map(p => `<circle cx="${X(p.vol).toFixed(1)}" cy="${Y(p.r).toFixed(1)}" r="1.6" fill="#8b95a8" opacity=".45"/>`).join('')}
-        ${marks.map(([n, p, c]) => `<circle cx="${X(p.vol).toFixed(1)}" cy="${Y(p.r).toFixed(1)}" r="5" fill="${c}" stroke="#000"/><text x="${(X(p.vol) + 7).toFixed(1)}" y="${(Y(p.r) + 3).toFixed(1)}" fill="${c}" font-size="10">${n}</text>`).join('')}
+        ${(() => { const placed = []; return marks.map(([n, p, c]) => {
+          // Étiquettes : décalées verticalement si elles en chevauchent une autre
+          const x = X(p.vol) + 7, w = n.length * 6; let y = Y(p.r) + 3;
+          for (let g = 0; g < 8 && placed.some(q => Math.abs(q.y - y) < 11 && x < q.x + q.w && q.x < x + w); g++) y += 11;
+          placed.push({ x, y, w });
+          return `<circle cx="${X(p.vol).toFixed(1)}" cy="${Y(p.r).toFixed(1)}" r="5" fill="${c}" stroke="#000"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${c}" font-size="10">${n}</text>`; }).join(''); })()}
       </svg>
       <div class="small muted">Chaque point gris est un portefeuille possible (prévisions actuelles de l'équipe). Les meilleurs sont en haut à gauche : plus de rendement pour moins de risque. Le préréglage « ⚙️ Optimisé » (onglet Portefeuille) reprend le meilleur rapport rendement/risque.</div>`;
     }
