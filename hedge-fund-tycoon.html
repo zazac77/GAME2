@@ -1942,12 +1942,13 @@ const Prop = {
     }
     if (!p.launched && p.fundedWeeks >= r.gradWeeks && this.trackAnnual() > 0 && !S.events.pending) Events.trigger('fund_launch');
   },
-  launch(keep) {
+  /* Lancement du fonds : le compte prop firm est clôturé */
+  launch() {
     const p = S.prop;
     const ann = this.trackAnnual();
     p.launched = true;
-    if (!keep) p.phase = 'off';
-    S.reputation = Math.max(S.reputation, clamp(15 + ann * 60, 15, 40) + (keep ? 0 : 5));
+    p.phase = 'off';
+    S.reputation = Math.max(S.reputation, clamp(15 + ann * 60, 15, 40) + 5);
     p.confBonus = clamp(ann * 40, 0, 15); p.confUntil = S.week + 52;
     // Nouveau fonds : la part repart à 100 et l'historique (NAV, graphique) démarre au lancement
     const f = S.fund;
@@ -2597,8 +2598,7 @@ const EVENTS = [
     prepare() { return { ann: Prop.trackAnnual(), weeks: S.prop.fundedWeeks, payouts: S.prop.payouts }; },
     text: p => `Après ${p.weeks} semaines sur compte financé (track record ${fmtPct(p.ann, 1, true)}/an, ${fmtMoney(p.payouts)} de gains encaissés), des investisseurs veulent vous confier leur argent. C'est le moment de lancer « ${esc(S.fundName)} ».`,
     options: [
-      { label: 'Lancer le fonds et garder le compte prop', hint: () => 'Le compte financé continue de verser des gains (même allocation que le fonds)', apply() { Prop.launch(true); } },
-      { label: 'Lancer le fonds et quitter la prop firm', hint: () => '⭐ +5 de réputation de départ (gérant indépendant), plus de versements prop', apply() { Prop.launch(false); } }
+      { label: 'Lancer le fonds', hint: () => 'Vous quittez la prop firm pour gérer votre propre fonds (⭐ +5 de réputation de départ en tant que gérant indépendant)', apply() { Prop.launch(); } }
     ]
   }
 ];
