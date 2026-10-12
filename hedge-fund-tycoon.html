@@ -185,6 +185,18 @@
   /* Équipe */
   .emp .title { font-weight: 700; }
   .traits { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+  .org { display: grid; gap: 10px; }
+  .dept { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--panel); }
+  .dept.need3 { border-left-color: var(--red); } .dept.need2 { border-left-color: var(--amber); } .dept.need1 { border-left-color: var(--accent); }
+  .dept.locked { opacity: .65; }
+  .depthead { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; flex-wrap: wrap; }
+  .dept.locked .depthead { cursor: default; }
+  .tree { margin: 8px 0 0 10px; border-left: 1px dashed var(--border); padding-left: 12px; display: grid; gap: 6px; }
+  .node { position: relative; }
+  .node::before { content: ''; position: absolute; left: -12px; top: 11px; width: 9px; border-top: 1px dashed var(--border); }
+  .node > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .nodebody { padding: 6px 0 4px 16px; }
+  ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 
   /* Journal */
   .journal { max-height: 520px; overflow-y: auto; }
@@ -1419,10 +1431,10 @@ const Team = {
   },
 
   /* Candidats */
-  makeCandidate() {
+  makeCandidate(forced) {
     const roles = Object.keys(ROLES).filter(r => this.roleUnlocked(r));
     if (!roles.length) return null;
-    const role = pick(roles);
+    const role = forced && roles.includes(forced) ? forced : pick(roles);
     const e = this.effects();
     const lvl = clamp(Math.round(1 + rng() * (S.tier / 2.2) + e.recruit + Progression.tierBonus('recruit') * 5 + (rng() < 0.15 ? 1 : 0)), 1, 7);
     const traitKeys = Object.keys(TRAITS);
@@ -1441,12 +1453,41 @@ const Team = {
     S.team.nextRefresh = S.week + CONFIG.CANDIDATE_REFRESH;
   },
   headhunterCost() { return 3 * U(); },
-  headhunt() {
-    const c = this.headhunterCost();
+  headhunt(role) {
+    const c = this.headhunterCost() * (role ? 1.5 : 1);
     if (S.cash < c) return UI.toast('Cash insuffisant.', 'bad');
     S.cash -= c;
-    this.refreshCandidates(true);
+    if (role) {
+      /* Recherche ciblée : 2 profils du rôle demandé, ajoutés aux candidats actuels */
+      for (let i = 0; i < 2; i++) { const k = this.makeCandidate(role); if (k) S.team.candidates.push(k); }
+      S.team.candidates = S.team.candidates.slice(-6);
+    } else this.refreshCandidates(true);
     UI.renderAll();
+  },
+  /* Diagnostic : manques de l'équipe, par rôle. prio 3 = urgent, 2 = conseillé, 1 = utile */
+  needs() {
+    const e = this.effects(), out = {};
+    const n = r => S.team.employees.filter(x => x.role === r).length;
+    const add = (r, prio, why) => { if (this.roleUnlocked(r) && (!out[r] || out[r].prio < prio)) out[r] = { prio, why }; };
+    const q = this.infoQuality();
+    if (q < 0.35) add('analyst', 3, `Qualité d'information faible (${fmtPct(q, 0)}) : vos prévisions sont très bruitées.`);
+    else if (q < 0.6) add('analyst', 2, `Qualité d'information moyenne (${fmtPct(q, 0)}) : des prévisions plus fiables aideraient.`);
+    const fr = Portfolio.feeReduction();
+    if (!n('trader')) add('trader', 2, 'Aucun trader : vous payez les frais de transaction pleins et pas de rééquilibrage auto.');
+    else if (fr < 0.25) add('trader', 1, `Frais réduits de ${fmtPct(fr, 0)} seulement.`);
+    if (S.risk > CONFIG.RISK_ALERT) add('risk', 3, `Score de risque élevé (${Math.round(S.risk)}/100) : risque d'appel de marge.`);
+    else if (!n('risk')) add('risk', 2, 'Personne ne surveille le risque : volatilité et score de risque non réduits.');
+    const nextT = Object.values(INVESTOR_TYPES).filter(T => S.tier >= T.tier && S.compliance < T.minCompliance);
+    if (nextT.length) add('compliance', 3, `Conformité ${Math.round(S.compliance)} : insuffisante pour ${nextT.map(T => T.short).join(', ')} (≥ ${nextT[0].minCompliance}).`);
+    else if (S.compliance < 60) add(this.roleUnlocked('compliance') ? 'compliance' : 'risk', 2, `Conformité basse (${Math.round(S.compliance)}/100) : amendes plus probables.`);
+    const conf = Investors.globalConfidence();
+    if (!n('sales')) add('sales', 2, 'Aucun commercial : la collecte dépend uniquement de vos performances.');
+    else if (conf < 45) add('sales', 2, `Confiance des clients basse (${Math.round(conf)}/100).`);
+    if (S.team.employees.length >= 5 && !n('hr')) add('hr', 1, 'Équipe de 5+ personnes : un RH rend les formations moins chères et les candidats meilleurs.');
+    const low = S.team.employees.filter(x => (x.morale ?? 70) < 45).length;
+    if (low >= 2) add('hr', 2, `${low} employés démotivés.`);
+    if (!n('quant')) add('quant', 2, 'Pas de quant : la meilleure source de qualité d’information et d’alpha.');
+    return out;
   },
   signingCost(c) { return this.salary(Object.assign({}, c, { salaryMult: 1 })) * CONFIG.SIGNING_WEEKS; },
   /* equity : payé moitié en parts (salaire −50 %, +2 % des commissions de performance) */
@@ -3695,7 +3736,7 @@ const UI = {
       }
       case 'train': Team.train(id); break;
       case 'promote': Team.promote(id); break;
-      case 'headhunt': Team.headhunt(); break;
+      case 'headhunt': Team.headhunt(el.dataset.role); break;
       case 'upgrade': Progression.buyUpgrade(el.dataset.u); break;
       case 'preset': if (S.tutorial) S.tutorial.preset = true; Portfolio.applyPreset(k); if (Portfolio.isCasual()) Portfolio.rebalance(); this.renderAll(); break;
       case 'w-minus': case 'w-plus': {
@@ -4080,63 +4121,82 @@ const UI = {
 
   /* ---------- Onglet Équipe ---------- */
   tabTeam() {
-    const e = Team.effects(), cap = Team.capacity();
-    const emps = S.team.employees.map(emp => {
-      const tc = Team.trainCost(emp), pb = Team.promoBlock(emp);
-      return `<div class="card emp">
-        <div class="row between"><span class="title">${ROLES[emp.role].icon} ${esc(emp.name)}</span><span class="pill">niv. ${emp.level}</span></div>
-        <div class="small accent">${Team.title(emp)}</div>
-        <div class="traits">${emp.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${emp.spec ? `<span class="pill b">Spécialité : ${CONFIG.ASSETS[emp.spec].name}</span>` : ''}</div>
-        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(emp) * 52)}/an <span class="muted">(${fmtMoney(Team.salary(emp))}/sem)</span></span></div>
-        <div class="kv small"><span class="muted">Puissance</span><span class="num">${fmtNum(Team.power(emp), 1)}</span></div>
-        <div class="kv small"><span class="muted">Moral</span><span class="num ${(emp.morale ?? 70) < 40 ? 'red' : (emp.morale ?? 70) < 60 ? 'amber' : 'green'}">${Math.round(emp.morale ?? 70)}/100</span></div>
-        <div class="gauge"><div style="width:${emp.morale ?? 70}%;background:${(emp.morale ?? 70) < 40 ? 'var(--red)' : (emp.morale ?? 70) < 60 ? 'var(--amber)' : 'var(--green)'}"></div></div>
-        <div class="row mt">
-          <button class="btn small" data-act="train" data-id="${emp.id}" ${emp.level >= 10 || S.rp < tc.rp || S.cash < tc.cash ? 'disabled' : ''} title="Coût : ${tc.rp} 🔬 + ${fmtMoney(tc.cash)}">Former (${tc.rp} 🔬 · ${fmtMoney(tc.cash)})</button>
-          <button class="btn small" data-act="promote" data-id="${emp.id}" ${pb || S.cash < Team.promoCost(emp) ? 'disabled' : ''} title="${pb || 'Coût : ' + fmtMoney(Team.promoCost(emp))}">Promouvoir${pb ? '' : ' (' + fmtMoney(Team.promoCost(emp)) + ')'}</button>
-          <button class="btn small" data-act="bonus" data-id="${emp.id}" ${S.cash < Team.bonusCost(emp) ? 'disabled' : ''} title="Moral +15">Prime (${fmtMoney(Team.bonusCost(emp))})</button>
-          <button class="btn small danger" data-act="fire" data-id="${emp.id}">Licencier</button>
-        </div>
-        ${pb && pb !== 'Rang maximal' ? `<div class="small muted">Promotion : ${pb}</div>` : ''}
-      </div>`;
-    }).join('') || '<div class="muted">Aucun employé pour l’instant. Vous tradez seul depuis votre desk de prop firm.</div>';
+    const e = Team.effects(), cap = Team.capacity(), needs = Team.needs();
     const full = S.team.employees.length >= cap;
-    const cands = S.team.candidates.map(c => {
+    const hh = Team.headhunterCost();
+    const mc = m => m < 40 ? 'red' : m < 60 ? 'amber' : 'green';
+    const PRIO = { 3: ['r', 'Urgent'], 2: ['a', 'Conseillé'], 1: ['b', 'Utile'] };
+    const empRow = emp => {
+      const tc = Team.trainCost(emp), pb = Team.promoBlock(emp), m = Math.round(emp.morale ?? 70);
+      return `<details class="node"><summary><span class="title">${esc(emp.name)}</span> <span class="small accent">${Team.title(emp)}</span>
+          <span class="pill">niv. ${emp.level}</span> <span class="small num ${mc(m)}">moral ${m}</span> <span class="small muted num">${fmtMoney(Team.salary(emp) * 52)}/an</span></summary>
+        <div class="nodebody">
+          <div class="traits">${emp.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${emp.spec ? `<span class="pill b">Spécialité : ${CONFIG.ASSETS[emp.spec].name}</span>` : ''}${emp.equity ? '<span class="pill">Associé (parts)</span>' : ''}</div>
+          <div class="kv small"><span class="muted">Puissance</span><span class="num">${fmtNum(Team.power(emp), 1)}</span></div>
+          <div class="gauge"><div style="width:${m}%;background:var(--${mc(m)})"></div></div>
+          <div class="row mt">
+            <button class="btn small" data-act="train" data-id="${emp.id}" ${emp.level >= 10 || S.rp < tc.rp || S.cash < tc.cash ? 'disabled' : ''} title="Coût : ${tc.rp} 🔬 + ${fmtMoney(tc.cash)}">Former (${tc.rp} 🔬 · ${fmtMoney(tc.cash)})</button>
+            <button class="btn small" data-act="promote" data-id="${emp.id}" ${pb || S.cash < Team.promoCost(emp) ? 'disabled' : ''} title="${pb || 'Coût : ' + fmtMoney(Team.promoCost(emp))}">Promouvoir${pb ? '' : ' (' + fmtMoney(Team.promoCost(emp)) + ')'}</button>
+            <button class="btn small" data-act="bonus" data-id="${emp.id}" ${S.cash < Team.bonusCost(emp) ? 'disabled' : ''} title="Moral +15">Prime (${fmtMoney(Team.bonusCost(emp))})</button>
+            <button class="btn small danger" data-act="fire" data-id="${emp.id}">Licencier</button>
+          </div>
+          ${pb && pb !== 'Rang maximal' ? `<div class="small muted">Promotion : ${pb}</div>` : ''}
+        </div></details>`;
+    };
+    const candRow = c => {
       const cost = Team.signingCost(c);
-      return `<div class="card emp">
-        <div class="row between"><span class="title">${ROLES[c.role].icon} ${esc(c.name)}</span><span class="pill">niv. ${c.level}</span></div>
-        <div class="small accent">${Team.title(c)}</div>
-        <div class="traits">${c.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${c.spec ? `<span class="pill b">${CONFIG.ASSETS[c.spec].name}</span>` : ''}</div>
-        <div class="small muted">${ROLES[c.role].effect}</div>
-        <div class="kv small"><span class="muted">Salaire</span><span class="num">${fmtMoney(Team.salary(c) * 52)}/an</span></div>
-        <div class="row mt"><button class="btn small primary" data-act="hire" data-id="${c.id}" ${full || S.cash < cost ? 'disabled' : ''}>Recruter (prime ${fmtMoney(cost)})</button>
-        <button class="btn small" data-act="hire-eq" data-id="${c.id}" ${full || S.cash < cost / 2 ? 'disabled' : ''} title="Salaire −50 % ; en échange, 2 % des futures commissions de performance">Payer moitié en parts (prime ${fmtMoney(cost / 2)})</button></div>
-      </div>`;
-    }).join('') || `<div class="muted">${S.tier < 2 ? 'Personne ne rejoint un trader de prop firm : lancez votre fonds et atteignez le palier 2 (Coworking, 5 M$ d’AUM).' : 'Aucun candidat.'}</div>`;
-    const roles = Object.entries(ROLES).map(([id, r]) => `<span class="pill ${Team.roleUnlocked(id) ? 'g' : ''}">${r.icon} ${r.titles[0]}${Team.roleUnlocked(id) ? '' : ' 🔒' + r.tier}</span>`).join(' ');
+      return `<div class="node cand"><div class="row between"><span><span class="pill g">Candidat</span> <b>${esc(c.name)}</b> <span class="pill">niv. ${c.level}</span>
+          ${c.traits.map(t => `<span class="pill" title="${TRAITS[t].desc}">${TRAITS[t].label}</span>`).join('')}${c.spec ? `<span class="pill b">${CONFIG.ASSETS[c.spec].name}</span>` : ''}
+          <span class="small muted num">${fmtMoney(Team.salary(c) * 52)}/an</span></span>
+        <span class="row"><button class="btn small primary" data-act="hire" data-id="${c.id}" ${full || S.cash < cost ? 'disabled' : ''}>Recruter (prime ${fmtMoney(cost)})</button>
+        <button class="btn small" data-act="hire-eq" data-id="${c.id}" ${full || S.cash < cost / 2 ? 'disabled' : ''} title="Salaire −50 % ; en échange, 2 % des futures commissions de performance">Moitié en parts (${fmtMoney(cost / 2)})</button></span></div></div>`;
+    };
+    const effTxt = {
+      analyst: `Qualité d'information ${fmtPct(Team.infoQuality(), 0)} · recherche ${fmtNum(Team.rpPerWeek(), 1)} 🔬/sem`,
+      trader: `Frais de transaction −${fmtPct(Portfolio.feeReduction(), 0)}`,
+      risk: `Volatilité −${fmtPct(e.volRed, 0)} · risque −${fmtNum(e.riskPts, 1)} pts`,
+      sales: `Attractivité +${fmtPct(e.inflow, 0)}`,
+      hr: `Formation −${fmtPct(e.trainDisc, 0)} · recrutement +${fmtNum(e.recruit, 1)} niv.`,
+      compliance: `Conformité +${fmtNum(e.compliance, 1)} (actuelle ${Math.round(S.compliance)}/100)`,
+      quant: `Alpha systématique +${fmtPct(e.quantAlpha, 1)}/an`
+    };
+    const order = Object.keys(ROLES).sort((x, y) => (needs[y]?.prio || 0) - (needs[x]?.prio || 0) || ROLES[x].tier - ROLES[y].tier);
+    const depts = order.map(r => {
+      const R = ROLES[r], unlocked = Team.roleUnlocked(r);
+      const staff = S.team.employees.filter(x => x.role === r).sort((x, y) => y.rank - x.rank || y.level - x.level);
+      const cands = S.team.candidates.filter(c => c.role === r);
+      const nd = needs[r];
+      if (!unlocked) return `<div class="dept locked"><div class="depthead"><span>${R.icon} <b>${R.family}</b></span><span class="pill">🔒 palier ${R.tier} (${TIERS[R.tier - 1].name})</span></div>
+        <div class="small muted">${R.effect}</div></div>`;
+      const head = staff.find(x => x.rank === R.titles.length - 1);
+      return `<details class="dept${nd ? ' need' + nd.prio : ''}" ${nd || staff.length || cands.length ? 'open' : ''}><summary class="depthead">
+          <span>${R.icon} <b>${R.family}</b> <span class="small muted">${staff.length} pers.${head ? ' · ' + R.titles[R.titles.length - 1] + ' : ' + esc(head.name) : ''}</span></span>
+          <span>${nd ? `<span class="pill ${PRIO[nd.prio][0]}">${PRIO[nd.prio][1]}</span>` : staff.length ? '<span class="pill g">Couvert</span>' : '<span class="pill">Vide</span>'}</span></summary>
+        <div class="small muted">${R.effect}. <span class="accent">${effTxt[r]}</span></div>
+        ${nd ? `<div class="small ${nd.prio === 3 ? 'red' : 'amber'} mt">→ ${nd.why}</div>` : ''}
+        <div class="tree">${staff.map(empRow).join('')}${cands.map(candRow).join('')}
+          ${!staff.length && !cands.length ? '<div class="node small muted">Personne dans ce département.</div>' : ''}</div>
+        ${S.tier >= 2 ? `<button class="btn small mt" data-act="headhunt" data-role="${r}" ${S.cash < hh * 1.5 ? 'disabled' : ''} title="2 candidats ${R.family} en plus des candidats actuels">Chercher un profil ${R.family} (${fmtMoney(hh * 1.5)})</button>` : ''}
+      </details>`;
+    }).join('');
+    const prioList = Object.entries(needs).sort((x, y) => y[1].prio - x[1].prio).slice(0, 4)
+      .map(([r, nd]) => `<li><span class="pill ${PRIO[nd.prio][0]}">${PRIO[nd.prio][1]}</span> ${ROLES[r].icon} <b>${ROLES[r].titles[0]}</b> — <span class="small">${nd.why}</span></li>`).join('');
     return `
-      <div class="grid g3">
+      <div class="grid g2">
+        <div class="card"><h4>À recruter en priorité</h4>
+          ${S.tier < 2 ? '<div class="small muted">Personne ne rejoint un trader de prop firm : lancez votre fonds et atteignez le palier 2 (Coworking, 5 M$ d’AUM).</div>'
+            : prioList ? `<ul class="plain">${prioList}</ul>` : '<div class="small green">Aucun manque majeur : renforcez les départements clés par la formation.</div>'}
+          ${full ? '<div class="small amber mt">Capacité du local atteinte : grandissez pour déménager.</div>' : ''}</div>
         <div class="card"><h4>Effectif</h4>
           <div class="kv"><span class="muted">Employés</span><b>${S.team.employees.length} / ${cap === Infinity ? '∞' : cap}</b></div>
           <div class="kv"><span class="muted">Masse salariale</span><span class="num">${fmtMoney(Team.payroll())}/sem</span></div>
           <div class="kv"><span class="muted">Frais de gestion encaissés</span><span class="num">${fmtMoney(S.last.mgmt)}/sem</span></div>
-          <div class="small muted mt">Salaires réels chargés : un junior coûte environ ${fmtMoney(Team.wageIndex() * 52)}/an ici. Payer « moitié en parts » divise le salaire par deux contre 2 % des commissions de performance.</div></div>
-        <div class="card"><h4>Effets de l'équipe</h4>
-          <div class="kv small"><span class="muted">Qualité d'information</span><span>${fmtPct(Team.infoQuality(), 0)}</span></div>
-          <div class="kv small"><span class="muted">Réduction des frais</span><span>${fmtPct(Portfolio.feeReduction(), 0)}</span></div>
-          <div class="kv small"><span class="muted">Réduction de volatilité</span><span>${fmtPct(e.volRed, 0)}</span></div>
-          <div class="kv small"><span class="muted">Points de risque en moins</span><span>${fmtNum(e.riskPts, 1)}</span></div>
-          <div class="kv small"><span class="muted">Bonus conformité</span><span>+${fmtNum(e.compliance, 1)}</span></div>
-          <div class="kv small"><span class="muted">Attractivité (ventes)</span><span>+${fmtPct(e.inflow, 0)}</span></div>
-          <div class="kv small"><span class="muted">Recherche</span><span>${fmtNum(Team.rpPerWeek(), 1)} 🔬/sem</span></div></div>
-        <div class="card"><h4>Rôles</h4><div class="row">${roles}</div>
-          <div class="small muted mt">Évolution : niveau 4 → Senior, niveau 7 → Head/Chief (un seul par entreprise). Les rôles à 2 titres passent Chief au niveau 6. Moral : un employé jamais promu, formé ou récompensé se démotive (efficacité réduite sous 50) et peut démissionner sous 30.</div></div>
+          <div class="row between mt"><span class="small muted">Nouveaux candidats dans ${Math.max(0, S.team.nextRefresh - S.week)} sem.</span>
+            <button class="btn small" data-act="headhunt" ${S.tier < 2 || S.cash < hh ? 'disabled' : ''}>Chasseur de têtes (${fmtMoney(hh)})</button></div>
+          <div class="small muted mt">Un junior coûte environ ${fmtMoney(Team.wageIndex() * 52)}/an. Niveau 4 → Senior, niveau 7 → Head/Chief (un seul par département ; niveau 6 pour les rôles à 2 titres). Sans promotion, formation ni prime, le moral baisse.</div></div>
       </div>
-      <h3 class="mt">Votre équipe</h3>
-      <div class="grid g3">${emps}</div>
-      <div class="row between mt"><h3 style="margin:0">Candidats</h3><div class="row"><span class="small muted">Nouveaux profils dans ${Math.max(0, S.team.nextRefresh - S.week)} sem.</span><button class="btn small" data-act="headhunt" ${S.tier < 2 || S.cash < Team.headhunterCost() ? 'disabled' : ''}>Chasseur de têtes (${fmtMoney(Team.headhunterCost())})</button></div></div>
-      ${full ? '<div class="small amber">Capacité du local atteinte : grandissez pour déménager.</div>' : ''}
-      <div class="grid g3 mt">${cands}</div>`;
+      <h3 class="mt">Organigramme</h3>
+      <div class="org">${depts}</div>`;
   },
 
   /* ---------- Onglet Investisseurs ---------- */
