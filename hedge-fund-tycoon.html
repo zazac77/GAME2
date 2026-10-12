@@ -3137,7 +3137,8 @@ const Hedges = {
     S.hedges = S.hedges.filter(x => x !== h);
     if (v > 0) Portfolio.deposit(v);
     Portfolio.syncNavps();
-    Game.log(`🛡️ Protection ${CONFIG.ASSETS[h.k].name} ${expired ? 'arrivée à échéance' : 'revendue'} : ${v > 0 ? 'gain ' + fmtMoney(v) : 'expire sans valeur'}.`, v > 0 ? 'good' : 'info');
+    const net = v - (h.premium || 0);
+    Game.log(`🛡️ Protection ${CONFIG.ASSETS[h.k].name} ${expired ? 'arrivée à échéance' : 'revendue'} : ${v > 0 ? 'encaissé ' + fmtMoney(v) : 'sans valeur'} − prime ${fmtMoney(h.premium || 0)} = résultat net ${net >= 0 ? '+' : ''}${fmtMoney(net)}.`, net >= 0 ? 'good' : 'info');
     if (!UI.batch) UI.renderAll();
   },
   step() { for (const h of S.hedges.slice()) if (S.week >= h.expiry) this.close(h.id, true); },
@@ -4069,7 +4070,7 @@ const UI = {
     this.hedgeOtm = Hedges.STRIKES.includes(this.hedgeOtm) ? this.hedgeOtm : 0.10;
     const rate = Hedges.premiumRate(this.hedgeK, this.hedgeOtm);
     const list = S.hedges.map(h => `<div class="kv small"><span>${CONFIG.ASSETS[h.k].icon} ${CONFIG.ASSETS[h.k].name} · ${fmtMoney(h.notional)} couverts sous ${fmtNum(h.strike, 1)} (prix ${fmtNum(S.market.prices[h.k], 1)})</span>
-      <span class="num">valeur ${fmtMoney(Hedges.payoff(h))} · ${h.expiry - S.week} sem. <button class="btn small" data-act="hedge-close" data-id="${h.id}">Revendre</button></span></div>`).join('');
+      <span class="num">valeur ${fmtMoney(Hedges.payoff(h))} − prime ${fmtMoney(h.premium || 0)} = <b class="${Hedges.payoff(h) - (h.premium || 0) >= 0 ? 'green' : 'red'}">net ${Hedges.payoff(h) - (h.premium || 0) >= 0 ? '+' : ''}${fmtMoney(Hedges.payoff(h) - (h.premium || 0))}</b> · ${h.expiry - S.week} sem. <button class="btn small" data-act="hedge-close" data-id="${h.id}">Revendre</button></span></div>`).join('');
     return `<div class="card mt"><h4>🛡️ ${gl('Couverture', 'Couvertures')} (protections)</h4>
       <div class="small muted">Une protection (option de vente) rapporte la baisse de l'actif sous le prix d'exercice choisi, pendant 13 semaines. Vous payez une ${gl('Prime', 'prime')} d'avance (plus chère quand le marché est nerveux). Elle réduit aussi le score de risque.</div>
       <div class="row mt"><select id="hedgeSel" aria-label="Actif à couvrir">${ks.map(k => `<option value="${k}" ${k === this.hedgeK ? 'selected' : ''}>${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name}</option>`).join('')}</select>
