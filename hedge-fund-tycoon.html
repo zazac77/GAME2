@@ -688,6 +688,9 @@ function pickWeighted(obj) {
   for (const [k, w] of entries) { r -= w; if (r <= 0) return k; }
   return entries.length ? entries[entries.length - 1][0] : null;
 }
+/* Fonction de répartition de la loi normale (approximation d'Abramowitz-Stegun) */
+function normCdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 /* Formatage monétaire : séparateurs de milliers puis notation k / M / Md / T */
@@ -1534,7 +1537,7 @@ const Team = {
 
   /* L'équipe prend la parole : alertes et recommandations actionnables */
   advise() {
-    S.advice = S.advice.filter(a => S.week - a.week < 4);
+    S.advice = S.advice.filter(a => S.week - a.week < 1);   // un conseil non appliqué disparaît la semaine suivante
     const add = (key, text, act) => {
       if (S.advice.some(a => a.key === key)) return;
       S.advice.unshift({ id: S.week * 100 + S.advice.length, key, week: S.week, text, act });
@@ -3040,16 +3043,23 @@ const Hedges = {
   available() { return S.prop.launched && S.tier >= 2; },
   months: 13,
   /* Prime ≈ 0,25 × volatilité prévue × √durée (plus chère quand le marché est nerveux) */
-  premiumRate(k) { return 0.25 * Market.expectedVol(k, this.months) * Math.sqrt(this.months / 52); },
+  STRIKES: [0, 0.05, 0.10, 0.20],   // seuil de déclenchement : 0 % (à la monnaie), −5 %, −10 %, −20 %
+  /* Prime (en % du montant couvert) : put de Black-Scholes (taux nul) sur la volatilité prévue,
+     majorée de 10 % (marge du vendeur). Plus le prix d'exercice est proche, plus c'est cher. */
+  premiumRate(k, otm = 0.10) {
+    const sig = Math.max(0.01, Market.expectedVol(k, this.months)), T = this.months / 52, K = 1 - otm;
+    const d1 = (Math.log(1 / K) + sig * sig * T / 2) / (sig * Math.sqrt(T)), d2 = d1 - sig * Math.sqrt(T);
+    return 1.1 * (K * normCdf(-d2) - normCdf(-d1));
+  },
   value() { if (!S || !S.hedges) return 0; let v = 0; for (const h of S.hedges) v += this.payoff(h); return v; },
   payoff(h) { const pr = S.market.prices[h.k]; return h.notional * Math.max(0, h.strike - pr) / h.spot; },
-  buy(k, frac) {
-    const A = Portfolio.aum(); const notional = A * frac; const prem = notional * this.premiumRate(k);
+  buy(k, frac, otm = 0.10) {
+    const A = Portfolio.aum(); const notional = A * frac; const prem = notional * this.premiumRate(k, otm);
     if (prem > Portfolio.liquid() * 0.5) return UI.toast('Liquidités du fonds insuffisantes.', 'bad');
     Portfolio.withdraw(prem); Portfolio.syncNavps();
     const spot = S.market.prices[k];
-    S.hedges.push({ id: S.nextHedgeId++, k, notional, spot, strike: spot * 0.9, expiry: S.week + this.months, premium: prem });
-    Game.log(`🛡️ Protection achetée sur ${CONFIG.ASSETS[k].name} : ${fmtMoney(notional)} couverts sous −10 %, prime ${fmtMoney(prem)}.`, 'info');
+    S.hedges.push({ id: S.nextHedgeId++, k, notional, spot, strike: spot * (1 - otm), otm, expiry: S.week + this.months, premium: prem });
+    Game.log(`🛡️ Protection achetée sur ${CONFIG.ASSETS[k].name} : ${fmtMoney(notional)} couverts sous ${otm ? '−' + fmtPct(otm, 0) : 'le prix actuel'}, prime ${fmtMoney(prem)}.`, 'info');
     UI.renderAll();
   },
   close(id, expired) {
@@ -3560,7 +3570,8 @@ const GLOSSARY = {
   'Préavis de retrait': 'Un gros client annonce qu’il part dans 4 semaines : vous pouvez tenter de le retenir.',
   'Régime de marché': 'Phase du marché (haussier, latéral, baissier, crise, bulle) qui change toutes les quelques semaines.',
   'Indice de référence': 'Portefeuille type à battre, qui dépend de votre stratégie.',
-  'Couverture': 'Protection (option de vente) qui rapporte si un actif baisse de plus de 10 %, contre une prime payée d’avance.',
+  'Couverture': 'Protection (option de vente) qui rapporte si un actif passe sous le prix d’exercice choisi, contre une prime payée d’avance.',
+  'Prix d’exercice': 'Niveau sous lequel la protection commence à payer. Plus il est proche du prix actuel, plus la prime est chère.',
   'Prime': 'Prix payé pour une protection. Elle est plus chère quand le marché est nerveux.',
   'Frontière efficiente': 'Ensemble des portefeuilles offrant le meilleur rendement pour un niveau de risque donné.',
   'Prop firm': 'Société qui confie son capital à des traders contre une part des gains, après un challenge.',
@@ -3681,7 +3692,7 @@ const UI = {
       case 'sat-launch': Satellites.launch(k); break;
       case 'sat-close': this.confirm('Fermer ce fonds ?', 'Les clients récupèrent leur argent (réputation −2).', () => Satellites.close(id)); break;
       case 'report': this.showReport(); break;
-      case 'hedge-buy': Hedges.buy(this.hedgeK || 'equities', Number(el.dataset.f)); break;
+      case 'hedge-buy': Hedges.buy(this.hedgeK || 'equities', Number(el.dataset.f), this.hedgeOtm ?? 0.10); break;
       case 'hedge-close': Hedges.close(id); break;
       case 'retain': Investors.retain(id); break;
       case 'bank-in': Bank.invest(Number(el.dataset.f)); break;
@@ -3716,6 +3727,7 @@ const UI = {
     if (el.dataset.sl) { S.fund.stopLoss[el.dataset.sl] = Number(el.value); S.fund.refPrice[el.dataset.sl] = S.market.prices[el.dataset.sl]; }
     if (el.id === 'ddAlertSel') { S.fund.ddAlert = Number(el.value); S.fund.ddAlerted = false; }
     if (el.id === 'hedgeSel') { this.hedgeK = el.value; this.renderTab(); }
+    if (el.id === 'strikeSel') { this.hedgeOtm = Number(el.value); this.renderTab(); }
   },
   /* Empêche la somme brute des cibles de dépasser le levier autorisé */
   clampTargetRoom(k) {
@@ -3985,12 +3997,14 @@ const UI = {
     const A = Portfolio.aum();
     const ks = RISKY.filter(k => Market.isUnlocked(k) && (CONFIG.ASSETS[k].group === 'actions' || ['crypto', 'commodities', 'space'].includes(k)));
     this.hedgeK = ks.includes(this.hedgeK) ? this.hedgeK : 'equities';
-    const rate = Hedges.premiumRate(this.hedgeK);
+    this.hedgeOtm = Hedges.STRIKES.includes(this.hedgeOtm) ? this.hedgeOtm : 0.10;
+    const rate = Hedges.premiumRate(this.hedgeK, this.hedgeOtm);
     const list = S.hedges.map(h => `<div class="kv small"><span>${CONFIG.ASSETS[h.k].icon} ${CONFIG.ASSETS[h.k].name} · ${fmtMoney(h.notional)} couverts sous ${fmtNum(h.strike, 1)} (prix ${fmtNum(S.market.prices[h.k], 1)})</span>
       <span class="num">valeur ${fmtMoney(Hedges.payoff(h))} · ${h.expiry - S.week} sem. <button class="btn small" data-act="hedge-close" data-id="${h.id}">Revendre</button></span></div>`).join('');
     return `<div class="card mt"><h4>🛡️ ${gl('Couverture', 'Couvertures')} (protections)</h4>
-      <div class="small muted">Une protection rapporte la baisse de l'actif au-delà de −10 % pendant 13 semaines. Vous payez une ${gl('Prime', 'prime')} d'avance (plus chère quand le marché est nerveux). Elle réduit aussi le score de risque.</div>
+      <div class="small muted">Une protection (option de vente) rapporte la baisse de l'actif sous le prix d'exercice choisi, pendant 13 semaines. Vous payez une ${gl('Prime', 'prime')} d'avance (plus chère quand le marché est nerveux). Elle réduit aussi le score de risque.</div>
       <div class="row mt"><select id="hedgeSel" aria-label="Actif à couvrir">${ks.map(k => `<option value="${k}" ${k === this.hedgeK ? 'selected' : ''}>${CONFIG.ASSETS[k].icon} ${CONFIG.ASSETS[k].name}</option>`).join('')}</select>
+      <label for="strikeSel" class="small">Prix d'exercice</label><select id="strikeSel">${Hedges.STRIKES.map(o => `<option value="${o}" ${o === this.hedgeOtm ? 'selected' : ''}>${o ? '−' + fmtPct(o, 0) + ' (prime ' + fmtPct(Hedges.premiumRate(this.hedgeK, o), 1) + ')' : 'Prix actuel (prime ' + fmtPct(Hedges.premiumRate(this.hedgeK, 0), 1) + ')'}</option>`).join('')}</select>
       <span class="small">Prime : <b>${fmtPct(rate, 1)}</b> du montant couvert</span>
       ${[0.1, 0.25, 0.5].map(f => `<button class="btn small" data-act="hedge-buy" data-f="${f}">Couvrir ${fmtPct(f, 0)} de l'AUM (prime ${fmtMoney(A * f * rate)})</button>`).join('')}</div>
       ${list ? `<h4 class="mt">Protections en cours</h4>${list}` : ''}
