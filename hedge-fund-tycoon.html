@@ -1285,6 +1285,23 @@ const Portfolio = {
     }
     const t = {};
     if (tot > 0) for (const k in sc) t[k] = Math.min(k === 'crypto' ? 15 : 60, Math.round(sc[k] / tot * 90));
+    // Ventes à découvert (intermédiaire, palier 5+) sur les actifs à prévision franchement négative
+    if (this.shortAllowed()) {
+      const sh = {};
+      for (const k of RISKY) {
+        if (!Market.isUnlocked(k) || !CONFIG.ASSETS[k].shortable || S.exclusions[k]) continue;
+        const fc = S.market.forecasts[k] || 0;
+        if (fc < -0.05) sh[k] = Math.min(15, Math.round((-fc - 0.05) / Math.max(0.05, Market.effVol(k)) * 40));
+      }
+      let shTot = Object.values(sh).reduce((a, b) => a + b, 0);
+      const f = shTot > 30 ? 30 / shTot : 1;
+      for (const k in sh) { const w = Math.round(sh[k] * f); if (w > 0) t[k] = -w; }
+      // Respect du levier : achats + ventes ≤ levier max
+      shTot = Object.values(t).filter(v => v < 0).reduce((a, b) => a - b, 0);
+      const longTot = Object.values(t).filter(v => v > 0).reduce((a, b) => a + b, 0);
+      const room = S.fund.leverage * 100 - shTot;
+      if (longTot > room && longTot > 0) for (const k in t) if (t[k] > 0) t[k] = Math.floor(t[k] * room / longTot);
+    }
     return t;
   },
 
@@ -1297,7 +1314,7 @@ const Portfolio = {
       equilibre: { label: '⚖️ Équilibré', t: mk([['equities', 30], ['tech', 8, 'equities'], ['health', 6, 'equities'], ['finance', 6, 'equities'], ['bonds', 25], ['bonds_long', 5, 'bonds'], ['highyield', 5, 'bonds'], ['commodities', 5, 'bonds']]) },
       dynamique: { label: '🚀 Dynamique', t: mk([['equities', 30], ['tech', 15, 'equities'], ['finance', 8, 'equities'], ['industrials', 8, 'equities'], ['energy', 5, 'equities'], ['commodities', 7, 'equities'], ['crypto', 5, 'equities'], ['bonds', 5], ['highyield', 5, 'bonds']]) },
       rotation:  { label: '🔄 Rotation sectorielle', t: mk(this.rotationList()) },
-      prevision: { label: '🔮 Selon les prévisions', t: this.forecastTarget() }
+      prevision: (() => { const t = this.forecastTarget(); const n = Object.values(t).filter(v => v < 0).length; return { label: n ? `🔮 Selon les prévisions (dont ${n} short${n > 1 ? 's' : ''})` : '🔮 Selon les prévisions', t }; })()
     };
     if (Analysis.optimizerAvailable()) out.optimise = { label: '⚙️ Optimisé (quant)', t: Analysis.optimal().t };
     return out;
