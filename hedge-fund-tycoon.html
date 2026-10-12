@@ -1954,6 +1954,7 @@ const Prop = {
     const f = S.fund;
     f.navps = CONFIG.START_NAVPS; f.hwm = f.navps; f.peakNavps = f.navps; f.navHist = [f.navps]; f.lastPerfFeeWeek = S.week; f.ddAlerted = false;
     S.history = { week: [S.week], navps: [f.navps], aum: [0], bench: [null] };
+    f.launchWeek = S.week;
     S.regimeStat = null;
     const seed = clamp(1e6 + ann * 1e7, 1e6, 5e6);   // « amis, famille et business angels »
     for (let i = 0; i < 3; i++) Investors.newInvestor('retail', seed / 3).name += ' (client fondateur)';
@@ -4309,7 +4310,9 @@ const UI = {
     if (!this.enabled || !S) return;
     this.$('navChart').setAttribute('aria-label', `${this.$('chartTitle').textContent}. NAV actuelle ${fmtNum(S.fund.navps, 2)}, AUM ${fmtMoney(Game.totalAUM())}${S.bench.def ? ', ' + Bench.name() + ' ' + fmtPct(Bench.idx(), 1, true) + ' depuis le lancement, fonds ' + fmtPct(Bench.you(), 1, true) : ''}.`);
     const h = S.history;
-    const labels = h.week.map(w => 'J' + w * 7);
+    // Après le lancement, l'axe repart de J0 (jour d'ouverture du fonds)
+    const off = S.prop.launched ? (S.fund.launchWeek ?? h.week[0] ?? 0) : 0;
+    const labels = h.week.map(w => 'J' + (w - off) * 7);
     if (this.chartLoaded && typeof window.Chart === 'function') {
       try {
         if (!this.chart) {
