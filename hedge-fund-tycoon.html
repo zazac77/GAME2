@@ -654,7 +654,7 @@ const TIERS = [
 const UPGRADES = [
   { id: 'software',   icon: '🖥️', name: 'Logiciel de trading',          tier: 1, cost: [6000, 2.5e5, 1.5e7],      rp: [0, 10, 40],  desc: 'Frais de transaction −15 % par niveau.' },
   { id: 'pr',         icon: '📣', name: 'Campagne de relations presse', tier: 1, cost: [9000, 6e5, 4e7],      rp: [0, 5, 20],   desc: 'Réputation +5 immédiate et +4 de réputation cible par niveau.' },
-  { id: 'data',       icon: '📡', name: 'Abonnement data premium',      tier: 2, cost: [4e4, 2e6, 1.5e8],     rp: [5, 20, 60],  desc: "Qualité d'information accrue (prévisions plus fiables, alpha)." },
+  { id: 'data',       icon: '📡', name: 'Abonnement data premium',      tier: 2, cost: [4e4, 2e6, 1.5e8],     rp: [5, 20, 60],  desc: "Qualité d'information +3 pts par niveau (prévisions plus fiables, alpha)." },
   { id: 'training',   icon: '🎓', name: 'Formation continue',           tier: 2, cost: [3e4, 1.5e6, 8e7],       rp: [5, 15, 40],  desc: 'Formation −20 % par niveau, recherche +10 % par niveau.' },
   { id: 'audit',      icon: '📋', name: "Bureau d'audit",               tier: 3, cost: [1.5e5, 6e6, 3e8],      rp: [5, 20, 50],  desc: 'Conformité cible +6 par niveau.' },
   { id: 'riskengine', icon: '🧯', name: 'Moteur de risque',             tier: 4, cost: [8e5, 3e7, 1.5e9],      rp: [10, 30, 80], desc: 'Volatilité effective −5 % par niveau.' },
@@ -1370,6 +1370,7 @@ const Team = {
     const key = S.week + '|' + S.tier + '|' + S.team.employees.map(e => e.id + ':' + e.level + ':' + e.rank).join(',');
     if (this._cache && key === this._cacheKey) return this._cache;
     const e = { info: 0, fee: 0, volRed: 0, riskPts: 0, compliance: 0, inflow: 0, rp: 0, recruit: 0, trainDisc: 0, quantAlpha: 0, conf: 0, spec: {} };
+    let riskRaw = 0, compRaw = 0;
     for (const emp of S.team.employees) {
       const p = this.power(emp);
       const has = t => emp.traits.includes(t);
@@ -1384,8 +1385,7 @@ const Team = {
           if (has('impulsif')) e.riskPts -= 2;
           break;
         case 'risk':
-          e.volRed += p * 0.022 * (has('prudent') ? 1.3 : 1) * m;
-          e.riskPts += p * 0.7 * m; e.compliance += p * 0.4;
+          riskRaw += p * (has('prudent') ? 1.3 : 1) * m; compRaw += p * 0.16;
           break;
         case 'sales':
           e.inflow += p * 0.035 * (has('charismatique') ? 1.5 : 1) * m;
@@ -1394,7 +1394,7 @@ const Team = {
           e.trainDisc += p * 0.03; e.recruit += p * 0.12;
           break;
         case 'compliance':
-          e.compliance += p * 2.5 * (has('methodique') ? 1.3 : 1);
+          compRaw += p * (has('methodique') ? 1.3 : 1);
           break;
         case 'quant':
           e.info += p * 1.6 * m; e.rp += p * 0.7; e.quantAlpha += p * 0.0015;
@@ -1403,17 +1403,27 @@ const Team = {
       if (has('genie')) e.rp += p * 0.3;
       if (has('charismatique')) e.conf += 0.15;
     }
+    // Rendements décroissants : l'effet sature, et le besoin grandit avec la taille de l'entreprise
+    const L = this.load(), sat = (x, need) => 1 - Math.exp(-x / need);
+    e.riskPts += 15 * sat(riskRaw, L.risk);
+    e.volRed = Math.min(0.35, 0.25 * sat(riskRaw, L.risk) + Progression.upg('riskengine') * 0.05);
+    e.compliance = 45 * sat(compRaw, L.comp);
     e.fee = Math.min(0.6, e.fee);
-    e.volRed = Math.min(0.35, e.volRed + Progression.upg('riskengine') * 0.05);
     e.inflow = Math.min(1.5, e.inflow);
     e.trainDisc = Math.min(0.5, e.trainDisc);
     e.quantAlpha = Math.min(0.03, e.quantAlpha);
     this._cache = e; this._cacheKey = key;
     return e;
   },
+  /* Charge de travail : plus l'entreprise est grande et couvre d'actifs, plus il faut de monde */
+  load() {
+    const n = RISKY.filter(k => Market.isUnlocked(k)).length, t = S.tier;
+    return { info: 4 + 0.8 * n + 1.5 * t, risk: 3 + 1.2 * t, comp: 3 + 1.5 * t };
+  },
+  /* Qualité d'information : jamais parfaite (95 % max), et d'autant plus dure à tenir que l'univers est large */
   infoQuality() {
     const e = this.effects();
-    return Math.min(0.98, 1 - Math.exp(-(e.info + Progression.upg('data') * 3) / 12) + Strat.b('info'));
+    return Math.min(0.95, 0.9 * (1 - Math.exp(-e.info / this.load().info)) + Progression.upg('data') * 0.03 + Strat.b('info') * 0.6);
   },
   rpPerWeek() {
     const e = this.effects();
@@ -2124,7 +2134,7 @@ const Risk = {
     if (RISKY.some(k => S.fund.positions[k] < 0)) c -= 3;
     c += Team.effects().compliance + Progression.upg('audit') * 6 + Progression.tierBonus('compliance') * 25 + Strat.b('compliance');
     if (S.events.flags.cyberPlan) c += 2;
-    return clamp(c, 0, 100);
+    return clamp(c, 0, 97);
   },
   reputationTarget() {
     const A = Math.max(Game.totalAUM(), 1e5);
