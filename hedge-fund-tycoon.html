@@ -603,11 +603,11 @@ const CONFIG = {
 
 /* Rôles de l'équipe : une seule personne peut détenir le titre le plus élevé */
 const ROLES = {
-  analyst:    { family: 'Analyse',     icon: '🔍', tier: 2, salary: 1.0, titles: ['Fund Analyst', 'Senior Fund Analyst', 'Head of Fund Analysis'], effect: "Qualité d'information, alpha, points de recherche" },
+  analyst:    { family: 'Analyse',     icon: '🔍', tier: 2, salary: 1.0, titles: ['Analyst', 'Senior Analyst', 'Head of Research'], effect: "Qualité d'information, alpha, points de recherche" },
   trader:     { family: 'Trading',     icon: '💹', tier: 2, salary: 1.0, titles: ['Trader', 'Senior Trader', 'Head of Trading'], effect: 'Réduit les frais de transaction, débloque le rééquilibrage auto' },
   risk:       { family: 'Risque',      icon: '🛡️', tier: 3, salary: 1.1, titles: ['Risk Analyst', 'Risk Manager', 'Head of Risk Management'], effect: 'Réduit la volatilité effective et le score de risque' },
   sales:      { family: 'Ventes',      icon: '🤝', tier: 3, salary: 0.9, titles: ['Sales', 'Senior Sales', 'Head of Sales'], effect: 'Attire les investisseurs' },
-  hr:         { family: 'RH',          icon: '🧑‍💼', tier: 4, salary: 0.9, titles: ['HR Officer', 'Chief HR Officer'], effect: 'Formation moins chère, meilleurs candidats' },
+  hr:         { family: 'RH',          icon: '🧑‍💼', tier: 4, salary: 0.9, titles: ['HR Officer', 'Chief HR Officer'], effect: 'Automatise recrutements, promotions et augmentations ; formation moins chère, meilleurs candidats' },
   compliance: { family: 'Conformité',  icon: '⚖️', tier: 6, salary: 1.1, titles: ['Compliance Officer', 'Chief Compliance Officer'], effect: 'Améliore la conformité, automatise le reporting' },
   quant:      { family: 'Quant',       icon: '🧠', tier: 8, salary: 1.4, titles: ['Quant', 'Senior Quant', 'Head of Quant Analysis'], effect: "Forte qualité d'information, alpha systématique" }
 };
@@ -1562,6 +1562,66 @@ const Team = {
     this.invalidate();
     Game.log(`Prime versée à ${e.name} (${fmtMoney(c)}) : moral ${Math.round(e.morale)}.`, 'good');
     UI.renderAll();
+  },
+
+  /* Augmentation : +8 % de salaire permanent (moral +10 tout de suite, et durablement plus haut) */
+  raiseCost(e) { return this.salary(e) * 0.08 * 52; },
+  raise(id, auto) {
+    const e = S.team.employees.find(x => x.id === id);
+    if (!e) return;
+    e.salaryMult = (e.salaryMult || 1) * 1.08;
+    e.morale = Math.min(100, (e.morale ?? 70) + 10); e.lastBoost = S.week; e.lastRaise = S.week;
+    this.invalidate();
+    Game.log(`${auto ? '🧑‍💼 RH : a' : 'A'}ugmentation de ${e.name} (+8 %, ${fmtMoney(this.salary(e) * 52)}/an).`, 'good');
+    if (!auto) UI.renderAll();
+  },
+
+  /* --- Automatisation RH (nécessite au moins un RH) --- */
+  hasHR() { return S.team.employees.some(e => e.role === 'hr'); },
+  hrSettings() { if (!S.team.hrAuto) S.team.hrAuto = { recruit: true, promo: true, raise: true }; return S.team.hrAuto; },
+  /* Trésorerie à préserver : 13 semaines de masse salariale */
+  hrReserve(extra = 0) { return (this.payroll() + extra) * 13; },
+  hrAuto() {
+    if (!this.hasHR() || !S.prop.launched) return;
+    const o = this.hrSettings();
+    // Augmentations : employé démotivé (< 55) et pas augmenté depuis 6 mois
+    if (o.raise) for (const e of S.team.employees) {
+      if ((e.morale ?? 70) < 55 && S.week - (e.lastRaise ?? -99) >= 26 && S.cash - this.raiseCost(e) / 52 > this.hrReserve()) this.raise(e.id, true);
+    }
+    // Promotions : dès qu'un employé est éligible et que la trésorerie le permet
+    if (o.promo) for (const e of S.team.employees.slice().sort((a, b) => b.level - a.level)) {
+      if (this.promoBlock(e)) continue;
+      const c = this.promoCost(e);
+      if (S.cash - c < this.hrReserve()) continue;
+      S.cash -= c; e.rank++; e.morale = Math.min(100, (e.morale ?? 70) + 20); e.lastBoost = S.week; this.invalidate();
+      Game.log(`🧑‍💼 RH : promotion de ${e.name}, désormais ${this.title(e)}.`, 'good');
+    }
+    // Recrutement : au plus une embauche par semaine, sur le manque le plus prioritaire (urgent ou conseillé)
+    if (o.recruit && S.team.employees.length < this.capacity()) {
+      const needs = Object.entries(this.needs()).filter(([, n]) => n.prio >= 2).sort((a, b) => b[1].prio - a[1].prio);
+      for (const [role] of needs) {
+        const c = S.team.candidates.filter(x => x.role === role).sort((a, b) => b.level - a.level)[0];
+        if (c) {
+          const cost = this.signingCost(c), sal = this.salary(c);
+          if (S.cash - cost < this.hrReserve(sal) * 2) continue;
+          S.cash -= cost; c.hiredWeek = S.week; c.morale = 70; c.lastBoost = S.week;
+          S.events.flags.everHired = true;
+          S.team.employees.push(c); S.team.candidates = S.team.candidates.filter(x => x !== c); this.invalidate();
+          Game.log(`🧑‍💼 RH : recrutement de ${c.name}, ${this.title(c)} (niv. ${c.level}), pour combler un manque.`, 'good');
+          UI.toast(`🧑‍💼 RH : ${c.name} recruté(e) (${ROLES[role].family})`, 'good');
+          break;
+        }
+        // Pas de candidat : recherche ciblée au plus toutes les 4 semaines
+        const hh = this.headhunterCost() * 1.5;
+        if (S.week - (S.team.lastHrHunt ?? -99) >= 4 && S.cash - hh > this.hrReserve() * 2) {
+          S.cash -= hh; S.team.lastHrHunt = S.week;
+          for (let i = 0; i < 2; i++) { const k = this.makeCandidate(role); if (k) S.team.candidates.push(k); }
+          S.team.candidates = S.team.candidates.slice(-6);
+          Game.log(`🧑‍💼 RH : recherche ciblée de profils ${ROLES[role].family} (${fmtMoney(hh)}).`, 'info');
+          break;
+        }
+      }
+    }
   },
 
   /* Moral hebdomadaire : salaire, promotions récentes, performance, trésorerie */
@@ -3371,6 +3431,7 @@ const Game = {
     Risk.step();                   // 7. risque, conformité, réputation, recherche
     Team.refreshCandidates(false);
     Team.updateMorale();
+    Team.hrAuto();
     Team.advise();
     Opps.generate();
     Quarter.step();                // 7b. objectifs et rapport trimestriels
@@ -3759,6 +3820,8 @@ const UI = {
       case 'opp': Opps.invest(id, Number(el.dataset.f)); break;
       case 'advice': Team.applyAdvice(id); break;
       case 'bonus': Team.bonus(id); break;
+      case 'raise': Team.raise(id); break;
+      case 'hr-auto': { const o = Team.hrSettings(); o[el.dataset.k] = !o[el.dataset.k]; this.renderTab(); break; }
       case 'sat-launch': Satellites.launch(k); break;
       case 'sat-close': this.confirm('Fermer ce fonds ?', 'Les clients récupèrent leur argent (réputation −2).', () => Satellites.close(id)); break;
       case 'report': this.showReport(); break;
@@ -4140,6 +4203,7 @@ const UI = {
             <button class="btn small" data-act="train" data-id="${emp.id}" ${emp.level >= 10 || S.rp < tc.rp || S.cash < tc.cash ? 'disabled' : ''} title="Coût : ${tc.rp} 🔬 + ${fmtMoney(tc.cash)}">Former (${tc.rp} 🔬 · ${fmtMoney(tc.cash)})</button>
             <button class="btn small" data-act="promote" data-id="${emp.id}" ${pb || S.cash < Team.promoCost(emp) ? 'disabled' : ''} title="${pb || 'Coût : ' + fmtMoney(Team.promoCost(emp))}">Promouvoir${pb ? '' : ' (' + fmtMoney(Team.promoCost(emp)) + ')'}</button>
             <button class="btn small" data-act="bonus" data-id="${emp.id}" ${S.cash < Team.bonusCost(emp) ? 'disabled' : ''} title="Moral +15">Prime (${fmtMoney(Team.bonusCost(emp))})</button>
+            <button class="btn small" data-act="raise" data-id="${emp.id}" title="Salaire +8 % définitif : moral +10 et durablement plus haut">Augmenter (+${fmtMoney(Team.raiseCost(emp))}/an)</button>
             <button class="btn small danger" data-act="fire" data-id="${emp.id}">Licencier</button>
           </div>
           ${pb && pb !== 'Rang maximal' ? `<div class="small muted">Promotion : ${pb}</div>` : ''}
@@ -4176,6 +4240,10 @@ const UI = {
           <span>${nd ? `<span class="pill ${PRIO[nd.prio][0]}">${PRIO[nd.prio][1]}</span>` : staff.length ? '<span class="pill g">Couvert</span>' : '<span class="pill">Vide</span>'}</span></summary>
         <div class="small muted">${R.effect}. <span class="accent">${effTxt[r]}</span></div>
         ${nd ? `<div class="small ${nd.prio === 3 ? 'red' : 'amber'} mt">→ ${nd.why}</div>` : ''}
+        ${r === 'hr' ? (() => { const o = Team.hrSettings(), on = staff.length > 0;
+          const tg = (k, l) => `<button class="btn small ${o[k] && on ? 'primary' : ''}" data-act="hr-auto" data-k="${k}" aria-pressed="${!!o[k]}" ${on ? '' : 'disabled'}>${l} : ${o[k] ? 'auto' : 'manuel'}</button>`;
+          return `<div class="mt"><div class="small ${on ? '' : 'muted'}">${on ? 'Automatisation RH : recrute sur les manques urgents ou conseillés, promeut dès l’éligibilité, augmente les démotivés (1 fois / 6 mois), en gardant toujours 13 semaines de salaires en trésorerie.' : 'Recrutez un RH pour automatiser recrutements, promotions et augmentations.'}</div>
+            <div class="row mt">${tg('recruit', 'Recrutement')}${tg('promo', 'Promotions')}${tg('raise', 'Augmentations')}</div></div>`; })() : ''}
         <div class="tree">${staff.map(empRow).join('')}${cands.map(candRow).join('')}
           ${!staff.length && !cands.length ? '<div class="node small muted">Personne dans ce département.</div>' : ''}</div>
         ${S.tier >= 2 ? `<button class="btn small mt" data-act="headhunt" data-role="${r}" ${S.cash < hh * 1.5 ? 'disabled' : ''} title="2 candidats ${R.family} en plus des candidats actuels">Chercher un profil ${R.family} (${fmtMoney(hh * 1.5)})</button>` : ''}
