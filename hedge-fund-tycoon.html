@@ -609,7 +609,7 @@ const ROLES = {
   sales:      { family: 'Ventes',      icon: '🤝', tier: 3, salary: 0.9, titles: ['Sales', 'Senior Sales', 'Head of Sales'], effect: 'Attire les investisseurs' },
   hr:         { family: 'RH',          icon: '🧑‍💼', tier: 4, salary: 0.9, titles: ['HR Officer', 'Chief HR Officer'], effect: 'Automatise recrutements, promotions et augmentations ; formation moins chère, meilleurs candidats' },
   compliance: { family: 'Conformité',  icon: '⚖️', tier: 6, salary: 1.1, titles: ['Compliance Officer', 'Chief Compliance Officer'], effect: 'Améliore la conformité, automatise le reporting' },
-  quant:      { family: 'Quant',       icon: '🧠', tier: 8, salary: 1.4, titles: ['Quant', 'Senior Quant', 'Head of Quant Analysis'], effect: "Forte qualité d'information, alpha systématique" }
+  quant:      { family: 'Quant',       icon: '🧠', tier: 8, salary: 1.4, titles: ['Quant', 'Senior Quant', 'Head of Quant Analysis'], effect: "Forte qualité d'information, alpha systématique, affine l'allocation prévisionnelle (optimiseur ancré sur l'indice)" }
 };
 
 const TRAITS = {
@@ -1288,10 +1288,11 @@ const Portfolio = {
   forecastError(k) { return (0.005 + 0.35 * (1 - Team.infoQuality()) * (CONFIG.ASSETS[k].vol + 0.03)) * (Team.effects().spec[k] ? 0.6 : 1); },
   /* Allocation « selon les prévisions » : poids ∝ rendement prévu / variance */
   forecastTarget() {
+    if (Analysis.optimizerAvailable()) return Analysis.blTarget();
     const sc = {};
     let tot = 0;
     for (const k of RISKY) {
-      if (!Market.isUnlocked(k)) continue;
+      if (!Market.isUnlocked(k) || S.exclusions[k]) continue;
       const fc = S.market.forecasts[k] || 0, v = Market.effVol(k, S.market.perceived);
       if (fc > 0.01) { sc[k] = fc / Math.max(0.0025, v * v); tot += sc[k]; }
     }
@@ -1325,9 +1326,10 @@ const Portfolio = {
       prudent:   { label: '🛡️ Prudent', t: mk([['equities', 10], ['health', 5, 'equities'], ['staples', 5, 'equities'], ['utilities', 5, 'equities'], ['bonds', 35], ['bonds_short', 20, 'bonds'], ['inflation', 5, 'bonds']]) },
       equilibre: { label: '⚖️ Équilibré', t: mk([['equities', 30], ['tech', 8, 'equities'], ['health', 6, 'equities'], ['finance', 6, 'equities'], ['bonds', 25], ['bonds_long', 5, 'bonds'], ['highyield', 5, 'bonds'], ['commodities', 5, 'bonds']]) },
       dynamique: { label: '🚀 Dynamique', t: mk([['equities', 30], ['tech', 15, 'equities'], ['finance', 8, 'equities'], ['industrials', 8, 'equities'], ['energy', 5, 'equities'], ['commodities', 7, 'equities'], ['crypto', 5, 'equities'], ['bonds', 5], ['highyield', 5, 'bonds']]) },
-      prevision: (() => { const t = this.forecastTarget(); const n = Object.values(t).filter(v => v < 0).length; return { label: n ? `🔮 Prévisionnelle (dont ${n} short${n > 1 ? 's' : ''})` : '🔮 Prévisionnelle', t }; })()
+      prevision: (() => { const t = this.forecastTarget(); const n = Object.values(t).filter(v => v < 0).length;
+        const q = Analysis.optimizerAvailable() ? ', affinée quant' : '';
+        return { label: `🔮 Prévisionnelle${n || q ? ' (' + (q ? q.slice(2) : '') + (n && q ? ', ' : '') + (n ? `dont ${n} short${n > 1 ? 's' : ''}` : '') + ')' : ''}`, t }; })()
     };
-    if (Analysis.optimizerAvailable()) { const t = Analysis.optimal().t; const n = Object.values(t).filter(v => v < 0).length; out.optimise = { label: n ? `⚙️ Optimisé (quant, dont ${n} short${n > 1 ? 's' : ''})` : '⚙️ Optimisé (quant)', t }; }
     return out;
   },
   applyPreset(id) {
@@ -3068,14 +3070,51 @@ const Analysis = {
     this._frontKey = key;
     return (this._front = { keys, pts, evalW });
   },
-  /* Portefeuille au meilleur ratio rendement prévu / risque (investi à 90 %) */
-  optimal() {
-    const F = this.frontier();
-    let best = null, bs = -Infinity;
-    for (const p of F.pts) { const sh = (p.r - 0.02) / Math.max(0.01, p.vol); if (sh > bs) { bs = sh; best = p; } }
+  /* Allocation prévisionnelle affinée par les quants (approche Black-Litterman simplifiée) :
+     part des poids de l'indice de référence, n'en dévie que selon les vues des analystes
+     (écart prévision − rendement implicite), pondérées par la confiance (qualité d'information).
+     Déterministe et stable d'une semaine à l'autre. */
+  blTarget(o = {}) {
+    const keys = this.keys().filter(k => !S.exclusions[k]), n = keys.length;
+    const d = Bench.def(), bw = d && d.w ? d.w : BENCHMARKS.default.w;
+    const wb = keys.map(() => 0);
+    for (const k in bw) { let kk = keys.includes(k) ? k : (CONFIG.ASSETS[k].group === 'actions' ? 'equities' : 'bonds'); const i = keys.indexOf(kk); if (i >= 0) wb[i] += bw[k]; }
+    const sb = wb.reduce((x, y) => x + y, 0) || 1; for (let i = 0; i < n; i++) wb[i] /= sb;
+    const V = this.cov(keys), delta = o.delta || 3;
+    // Rendement « neutre » : moyenne de long terme de chaque actif (pondérée par la fréquence des régimes).
+    // Une vue = la prévision s'écarte de cette normale (« ce régime favorise / pénalise cet actif »).
+    const RW = { bull: 0.34, range: 0.30, bear: 0.22, crisis: 0.06, bubble: 0.08 };
+    const pi = keys.map(k => Object.entries(RW).reduce((x, [rg, p]) => x + p * Market.expectedMu(k, rg), 0));
+    const conf = Math.min(0.95, Team.infoQuality());
+    // Système (V + crête) · a = conf · (prévision − implicite) / δ
+    const ridge = V.reduce((x, r, i) => x + r[i], 0) / n * 0.15;
+    const M = V.map((r, i) => r.map((v, j) => v + (i === j ? ridge : 0)));
+    const rhs = keys.map((k, i) => conf * ((S.market.forecasts[k] || 0) - pi[i]) / delta);
+    const A = M.map((r, i) => r.concat([rhs[i]]));
+    for (let c = 0; c < n; c++) {
+      let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      [A[c], A[p]] = [A[p], A[c]];
+      for (let r = 0; r < n; r++) if (r !== c && A[c][c]) { const f = A[r][c] / A[c][c]; for (let j = c; j <= n; j++) A[r][j] -= f * A[c][j]; }
+    }
+    let w = keys.map((k, i) => wb[i] + (A[i][i] ? A[i][n] / A[i][i] : 0));
+    // Limites : pas de short sans autorisation, 40 % max par ligne (15 % crypto), 15 % max par short
+    const canShort = Portfolio.shortAllowed();
+    w = w.map((v, i) => { const k = keys[i]; const hi = k === 'crypto' ? 0.15 : 0.4;
+      return clamp(v, canShort && CONFIG.ASSETS[k].shortable ? -0.15 : 0, hi); });
+    // Écart de suivi (tracking error) prévu limité à 12 %/an
+    const act = w.map((v, i) => v - wb[i]);
+    const te = Math.sqrt(Math.max(0, act.reduce((x, a, i) => x + a * act.reduce((y, b, j) => y + b * V[i][j], 0), 0)));
+    const TE = o.te || 0.12; if (te > TE) w = w.map((v, i) => wb[i] + act[i] * TE / te);
+    w = w.map(v => Math.abs(v) < 0.02 ? 0 : v);   // pas de micro-lignes
+    // Exposition nette 90 % ; shorts ≤ 30 % et limités par la marge de levier (brut ≤ levier)
+    const shCap = o.noShort ? 0 : Math.min(0.3, Math.max(0, (S.fund.leverage - 0.9) / 2));
+    let sh = -w.filter(v => v < 0).reduce((x, y) => x + y, 0);
+    if (sh > shCap) { w = w.map(v => v < 0 ? (shCap ? v * shCap / sh : 0) : v); sh = shCap; }
+    const lg = w.filter(v => v > 0).reduce((x, y) => x + y, 0);
+    if (lg > 0) w = w.map(v => v > 0 ? v * (0.9 + sh) / lg : v);
     const t = {};
-    if (best) F.keys.forEach((k, i) => { const w = Math.round(best.x[i] * 90); if (w !== 0) t[k] = w; });
-    return { t, p: best };
+    keys.forEach((k, i) => { const v = Math.round(w[i] * 100); if (Math.abs(v) >= 2) t[k] = v; });
+    return t;
   }
 };
 
@@ -4431,7 +4470,7 @@ const UI = {
     let front;
     if (!lv.quant) front = lock('Frontière efficiente & allocation optimisée', 'Débloquées par un Quant dans l’équipe (palier 8) ou la stratégie Quantitatif.');
     else {
-      const F = Analysis.frontier(), opt = Analysis.optimal();
+      const F = Analysis.frontier();
       const W = 520, H = 240, pad = 34;
       const M = this.frontMode === 'obs' ? Analysis.measured(F.keys) : null, obs = !!M;
       const ev = obs ? M.evalW : F.evalW;
@@ -4440,7 +4479,6 @@ const UI = {
       const presets = Portfolio.presets();
       const marks = [['Vous', evalT(Object.fromEntries(RISKY.map(k => [k, Portfolio.weights()[k] * 100]))), '#fff'], ['Prudent', evalT(presets.prudent.t), '#60a5fa'], ['Équilibré', evalT(presets.equilibre.t), '#34d399'], ['Dynamique', evalT(presets.dynamique.t), '#f59e0b']];
       marks.push(['Prévisionnelle', evalT(presets.prevision.t), '#22d3ee']);
-      if (opt.p) marks.push(['Optimisé', obs ? M.evalW(opt.p.x) : opt.p, '#e879f9']);
       const all = cloud.concat(marks.map(m => m[1]));
       const vmax = Math.max(...all.map(p => p.vol)) * 1.05 || 0.1, rmin = Math.min(0, ...all.map(p => p.r)), rmax = Math.max(...all.map(p => p.r)) * 1.05 || 0.1;
       const X = v => pad + v / vmax * (W - pad - 10), Y = r => H - pad - (r - rmin) / (rmax - rmin || 1) * (H - pad - 10);
@@ -4458,7 +4496,7 @@ const UI = {
       </svg>
       <div class="small muted">${obs
         ? `<b>Mode constaté</b> : les mêmes portefeuilles, placés selon les rendements et volatilités <b>réellement observés</b> sur les ${M.weeks} dernières semaines (annualisés). Comparez avec le mode prévu pour juger la fiabilité des prévisions.`
-        : `<b>Mode prévu</b> : chaque point gris est un portefeuille possible, placé selon les <b>prévisions</b> de l'équipe (rendements prévus, volatilités et corrélations du régime détecté). Les meilleurs sont en haut à gauche. Le préréglage « ⚙️ Optimisé » reprend le meilleur rapport rendement/risque.`}</div>`;
+        : `<b>Mode prévu</b> : chaque point gris est un portefeuille possible, placé selon les <b>prévisions</b> de l'équipe (rendements prévus, volatilités et corrélations du régime détecté). Les meilleurs sont en haut à gauche. Le préréglage « 🔮 Prévisionnelle », affiné par les quants, part de votre indice et s'en écarte selon les vues de l'équipe et leur fiabilité.`}</div>`;
       front = `<div class="row between"><span class="small muted">${obs ? 'Constaté sur ' + M.weeks + ' semaines' : this.frontMode === 'obs' ? 'Historique insuffisant : affichage des prévisions' : 'Prévisions de l’équipe'}</span>
         <button class="btn small" data-act="front-mode">${this.frontMode === 'obs' ? 'Voir les prévisions' : 'Voir le constaté (52 sem.)'}</button></div>` + front;
     }
