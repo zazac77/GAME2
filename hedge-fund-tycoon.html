@@ -605,11 +605,11 @@ const CONFIG = {
 const ROLES = {
   analyst:    { family: 'Analyse',     icon: '🔍', tier: 2, salary: 1.0, titles: ['Analyst', 'Senior Analyst', 'Head of Research'], effect: "Qualité d'information, alpha, points de recherche" },
   trader:     { family: 'Trading',     icon: '💹', tier: 2, salary: 1.0, titles: ['Trader', 'Senior Trader', 'Head of Trading'], effect: 'Réduit les frais de transaction, débloque le rééquilibrage auto' },
-  risk:       { family: 'Risque',      icon: '🛡️', tier: 3, salary: 1.1, titles: ['Risk Analyst', 'Risk Manager', 'Head of Risk Management'], effect: 'Réduit la volatilité effective et le score de risque' },
-  sales:      { family: 'Ventes',      icon: '🤝', tier: 3, salary: 0.9, titles: ['Sales', 'Senior Sales', 'Head of Sales'], effect: 'Attire les investisseurs' },
-  hr:         { family: 'RH',          icon: '🧑‍💼', tier: 4, salary: 0.9, titles: ['HR Officer', 'Chief HR Officer'], effect: 'Automatise recrutements, promotions et augmentations ; formation moins chère, meilleurs candidats' },
-  compliance: { family: 'Conformité',  icon: '⚖️', tier: 6, salary: 1.1, titles: ['Compliance Officer', 'Chief Compliance Officer'], effect: 'Améliore la conformité, automatise le reporting' },
-  quant:      { family: 'Quant',       icon: '🧠', tier: 8, salary: 1.4, titles: ['Quant', 'Senior Quant', 'Head of Quant Analysis'], effect: "Forte qualité d'information, alpha systématique, affine l'allocation prévisionnelle (optimiseur ancré sur l'indice)" }
+  risk:       { family: 'Risque',      icon: '🛡️', tier: 2, salary: 1.1, titles: ['Risk Analyst', 'Risk Manager', 'Head of Risk Management'], effect: 'Réduit la volatilité effective et le score de risque' },
+  sales:      { family: 'Ventes',      icon: '🤝', tier: 2, salary: 0.9, titles: ['Sales', 'Senior Sales', 'Head of Sales'], effect: 'Attire les investisseurs' },
+  hr:         { family: 'RH',          icon: '🧑‍💼', tier: 3, salary: 0.9, titles: ['HR Officer', 'Chief HR Officer'], effect: 'Automatise recrutements, promotions et augmentations ; formation moins chère, meilleurs candidats' },
+  compliance: { family: 'Conformité',  icon: '⚖️', tier: 3, salary: 1.1, titles: ['Compliance Officer', 'Chief Compliance Officer'], effect: 'Améliore la conformité, automatise le reporting' },
+  quant:      { family: 'Quant',       icon: '🧠', tier: 4, salary: 1.4, titles: ['Quant', 'Senior Quant', 'Head of Quant Analysis'], effect: "Forte qualité d'information, alpha systématique, affine l'allocation prévisionnelle (optimiseur ancré sur l'indice)" }
 };
 
 const TRAITS = {
@@ -634,13 +634,13 @@ const INVESTOR_TYPES = {
 /* Paliers / locaux. bonus : effets chiffrés (voir tierBonus()). */
 const TIERS = [
   { name: 'Prop firm', min: 0, local: 'Desk loué chez une prop firm', cap: 2, icon: '🎯', bg: ['#17120d', '#2b2117'], accent: '#d9a066', bonusTxt: '—', bonus: {}, unlocks: 'Challenge prop firm, puis lancement du fonds' },
-  { name: 'Coworking', min: 5e6, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, HNWI, conso. de base, énergie, obligations courtes' },
-  { name: 'Petit bureau', min: 2.5e7, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'Risk manager, sales, industrie, services publics, obligations longues' },
-  { name: 'Boutique', min: 1e8, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Matières premières, immobilier coté, haut rendement, RH' },
+  { name: 'Coworking', min: 5e6, local: 'Espace partagé', cap: 3, icon: '☕', bg: ['#0c1714', '#1b2d28'], accent: '#5fd3a6', bonusTxt: '+5 % réputation', bonus: { rep: 0.05 }, unlocks: 'Analyste, trader, risk analyst, sales, HNWI, conso. de base, énergie, obligations courtes' },
+  { name: 'Petit bureau', min: 2.5e7, local: '2 pièces', cap: 5, icon: '🏠', bg: ['#0f1522', '#1f2a3d'], accent: '#7aa2f7', bonusTxt: '+10 % qualité recrutement', bonus: { recruit: 0.10 }, unlocks: 'RH, compliance officer, industrie, services publics, obligations longues' },
+  { name: 'Boutique', min: 1e8, local: 'Façade en verre', cap: 8, icon: '🏬', bg: ['#0c1620', '#173141'], accent: '#4fd1e8', bonusTxt: '+10 % confiance clients', bonus: { clientConf: 0.10 }, unlocks: 'Quant, matières premières, immobilier coté, haut rendement' },
   { name: 'Étage', min: 5e8, local: 'Étage entier', cap: 15, icon: '🏢', bg: ['#110f20', '#262046'], accent: '#a78bfa', bonusTxt: '+15 % vitesse trading', bonus: { trading: 0.15 }, unlocks: 'Levier 2x, short, devises, obligations indexées, UHNWI' },
-  { name: 'Immeuble', min: 2.5e9, local: 'Immeuble dédié', cap: 25, icon: '🏛️', bg: ['#15110e', '#33261b'], accent: '#f0b86e', bonusTxt: '+20 % conformité', bonus: { compliance: 0.20 }, unlocks: 'Compliance officer, crypto' },
+  { name: 'Immeuble', min: 2.5e9, local: 'Immeuble dédié', cap: 25, icon: '🏛️', bg: ['#15110e', '#33261b'], accent: '#f0b86e', bonusTxt: '+20 % conformité', bonus: { compliance: 0.20 }, unlocks: 'Crypto' },
   { name: 'Tour locale', min: 1e10, local: 'Tour de 20 étages', cap: 40, icon: '🌆', bg: ['#0c1323', '#1e2f55'], accent: '#60a5fa', bonusTxt: '+25 % AUM retail', bonus: { retail: 0.25 }, unlocks: 'Institutionnels, levier 5x' },
-  { name: 'Siège régional', min: 5e10, local: 'Campus régional', cap: 70, icon: '🏙️', bg: ['#0b1919', '#173c3c'], accent: '#2dd4bf', bonusTxt: '+30 % intérêt institutionnel', bonus: { institutional: 0.30 }, unlocks: 'Quant, dérivés' },
+  { name: 'Siège régional', min: 5e10, local: 'Campus régional', cap: 70, icon: '🏙️', bg: ['#0b1919', '#173c3c'], accent: '#2dd4bf', bonusTxt: '+30 % intérêt institutionnel', bonus: { institutional: 0.30 }, unlocks: 'Dérivés' },
   { name: 'Tour financière', min: 2e11, local: 'Gratte-ciel', cap: 120, icon: '🌃', bg: ['#110c1b', '#2d1f4a'], accent: '#c084fc', bonusTxt: '+35 % gain réputation', bonus: { repGain: 0.35 }, unlocks: 'Fonds de pension' },
   { name: 'Campus mondial', min: 1e12, local: 'Campus mondial', cap: 200, icon: '🌍', bg: ['#0a1811', '#14402a'], accent: '#4ade80', bonusTxt: '+40 % points recherche', bonus: { rp: 0.40 }, unlocks: 'Stratégies auto' },
   { name: 'Gratte-ciel emblématique', min: 5e12, local: 'Tour iconique', cap: 350, icon: '🗼', bg: ['#190e11', '#4a1f2b'], accent: '#fb7185', bonusTxt: '+45 % performance fee', bonus: { perfFee: 0.45 }, unlocks: 'Marchés émergents' },
@@ -4478,7 +4478,7 @@ const UI = {
 
     // 5. Frontière efficiente
     let front;
-    if (!lv.quant) front = lock('Frontière efficiente & allocation optimisée', 'Débloquées par un Quant dans l’équipe (palier 8) ou la stratégie Quantitatif.');
+    if (!lv.quant) front = lock('Frontière efficiente & allocation optimisée', 'Débloquées par un Quant dans l’équipe (palier 4) ou la stratégie Quantitatif.');
     else {
       const F = Analysis.frontier();
       const W = 520, H = 240, pad = 34;
